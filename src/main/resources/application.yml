@@ -1,0 +1,11 @@
+spring:
+  application:
+    name: motodi-go-backend-core
+  profiles:
+    active: local
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
