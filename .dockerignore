@@ -4,3 +4,9 @@ target
 docs
 HELP.md
 *.log
+data/gis/*.gpkg
+data/gis/*.shp
+data/gis/*.shx
+data/gis/*.dbf
+data/gis/*.prj
+data/gis/*.cpg
