@@ -16,5 +16,10 @@ server:
   port: 8081
 
 motodigo:
+  auth:
+    jwt-secret: ${JWT_SECRET:change-me-to-at-least-32-bytes-for-hs256}
+  otp:
+    provider: ${OTP_PROVIDER:log}
+    pepper: ${OTP_PEPPER:change-me-otp-pepper}
   gis:
     routes-yaounde-path: ${GIS_ROUTES_YAOUNDE_PATH:./data/gis/routes_yaounde.gpkg}

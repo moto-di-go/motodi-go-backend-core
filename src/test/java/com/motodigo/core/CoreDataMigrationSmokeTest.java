@@ -99,6 +99,54 @@ class CoreDataMigrationSmokeTest {
 				assertTrue(resultSet.next());
 				assertTrue(resultSet.getInt("gist_count") >= 1);
 			}
+
+			String userId;
+			try (ResultSet resultSet = statement.executeQuery("""
+					INSERT INTO users (phone_number, password_hash, full_name, cgu_accepted, status, phone_verified_at)
+					VALUES ('+237699001122', '$2a$10$smoke-test-password-hash', 'Smoke User', true, 'ACTIVE', now())
+					RETURNING id
+					""")) {
+				assertTrue(resultSet.next());
+				userId = resultSet.getString("id");
+			}
+
+			statement.execute("""
+					INSERT INTO wallets (user_id, currency, current_balance, status)
+					VALUES ('%s', 'XAF', 0, 'ACTIVE')
+					ON CONFLICT (user_id) DO NOTHING
+					""".formatted(userId));
+			statement.execute("""
+					INSERT INTO otp_codes (user_id, destination_phone, purpose, code_hash, expires_at)
+					VALUES ('%s', '+237699001122', 'REGISTRATION', 'otp-hash-smoke', now() + interval '5 minutes')
+					""".formatted(userId));
+			statement.execute("""
+					INSERT INTO sessions (user_id, access_token_hash, refresh_token_hash, ip_address, expires_at, status)
+					VALUES ('%s', 'access-hash-smoke', 'refresh-hash-smoke', '127.0.0.1', now() + interval '30 days', 'ACTIVE')
+					""".formatted(userId));
+			statement.execute("""
+					INSERT INTO auth_attempt_events (
+					  user_id, phone_number, event_type, success, reason_code, ip_address, user_agent, correlation_id
+					)
+					VALUES (
+					  '%s', '+237699001122', 'LOGIN', true, NULL, '127.0.0.1', 'migration-smoke-test', 'corr-smoke-test'
+					)
+					""".formatted(userId));
+
+			try (ResultSet resultSet = statement.executeQuery("""
+					SELECT
+					  (SELECT count(*) FROM users WHERE phone_number = '+237699001122') AS users_count,
+					  (SELECT count(*) FROM wallets WHERE user_id = '%s' AND currency = 'XAF') AS wallets_count,
+					  (SELECT count(*) FROM otp_codes WHERE user_id = '%s' AND purpose = 'REGISTRATION') AS otp_count,
+					  (SELECT count(*) FROM sessions WHERE user_id = '%s' AND status = 'ACTIVE') AS sessions_count,
+					  (SELECT count(*) FROM auth_attempt_events WHERE user_id = '%s' AND event_type = 'LOGIN') AS events_count
+					""".formatted(userId, userId, userId, userId))) {
+				assertTrue(resultSet.next());
+				assertEquals(1, resultSet.getInt("users_count"));
+				assertEquals(1, resultSet.getInt("wallets_count"));
+				assertEquals(1, resultSet.getInt("otp_count"));
+				assertEquals(1, resultSet.getInt("sessions_count"));
+				assertEquals(1, resultSet.getInt("events_count"));
+			}
 		}
 	}
 
