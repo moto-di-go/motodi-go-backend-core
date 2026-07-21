@@ -39,3 +39,7 @@ data/gis/*.shx
 data/gis/*.dbf
 data/gis/*.prj
 data/gis/*.cpg
+
+### Env Files ###
+.env*
+!.env.example

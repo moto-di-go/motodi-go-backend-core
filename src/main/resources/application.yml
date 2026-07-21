@@ -1,11 +1,39 @@
 spring:
   application:
     name: motodi-go-backend-core
-  profiles:
-    active: local
 
 management:
   endpoints:
     web:
       exposure:
         include: health,info,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+
+motodigo:
+  auth:
+    jwt-secret: ${JWT_SECRET:}
+    issuer-url: ${JWT_ISSUER_URL:http://localhost:8081}
+    audience: ${JWT_AUDIENCE:motodi-go-api}
+    access-ttl-seconds: ${JWT_ACCESS_TTL_SECONDS:900}
+    refresh-ttl-seconds: ${JWT_REFRESH_TTL_SECONDS:2592000}
+  otp:
+    provider: ${OTP_PROVIDER:log}
+    length: ${OTP_LENGTH:6}
+    ttl-seconds: ${OTP_TTL_SECONDS:300}
+    max-attempts: ${OTP_MAX_ATTEMPTS:5}
+    resend-cooldown-seconds: ${OTP_RESEND_COOLDOWN_SECONDS:60}
+    daily-limit-per-phone: ${OTP_DAILY_LIMIT_PER_PHONE:10}
+    daily-limit-per-ip: ${OTP_DAILY_LIMIT_PER_IP:50}
+    pepper: ${OTP_PEPPER:}
+  africas-talking:
+    base-url: ${AFRICAS_TALKING_BASE_URL:https://api.africastalking.com}
+    username: ${AFRICAS_TALKING_USERNAME:}
+    api-key: ${AFRICAS_TALKING_API_KEY:}
+    sender-id: ${AFRICAS_TALKING_SENDER_ID:}
+    enqueue: ${AFRICAS_TALKING_ENQUEUE:1}
+    connect-timeout-ms: ${AFRICAS_TALKING_CONNECT_TIMEOUT_MS:3000}
+    read-timeout-ms: ${AFRICAS_TALKING_READ_TIMEOUT_MS:5000}

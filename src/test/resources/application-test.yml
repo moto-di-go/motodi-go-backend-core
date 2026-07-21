@@ -1,0 +1,6 @@
+motodigo:
+  auth:
+    jwt-secret: test-jwt-secret-at-least-32-bytes-long
+  otp:
+    provider: test
+    pepper: test-otp-pepper-at-least-16-bytes
