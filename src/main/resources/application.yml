@@ -37,3 +37,11 @@ motodigo:
     enqueue: ${AFRICAS_TALKING_ENQUEUE:1}
     connect-timeout-ms: ${AFRICAS_TALKING_CONNECT_TIMEOUT_MS:3000}
     read-timeout-ms: ${AFRICAS_TALKING_READ_TIMEOUT_MS:5000}
+  kyc:
+    storage:
+      endpoint: ${KYC_STORAGE_ENDPOINT:http://localhost:9000}
+      region: ${KYC_STORAGE_REGION:us-east-1}
+      bucket: ${KYC_STORAGE_BUCKET:motodigo-kyc}
+      access-key: ${KYC_STORAGE_ACCESS_KEY:change-me}
+      secret-key: ${KYC_STORAGE_SECRET_KEY:change-me}
+      path-style: ${KYC_STORAGE_PATH_STYLE:true}

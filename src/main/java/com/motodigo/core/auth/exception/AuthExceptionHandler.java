@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.stream.Collectors;
 
 import com.motodigo.core.auth.dto.ErrorResponse;
+import com.motodigo.core.kyc.exception.KycException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.HttpStatus;
@@ -19,6 +20,11 @@ public class AuthExceptionHandler {
 
 	@ExceptionHandler(AuthException.class)
 	ResponseEntity<ErrorResponse> handleAuthException(AuthException exception, HttpServletRequest request) {
+		return error(exception.errorCode().status(), exception.errorCode().name(), exception.getMessage(), request);
+	}
+
+	@ExceptionHandler(KycException.class)
+	ResponseEntity<ErrorResponse> handleKycException(KycException exception, HttpServletRequest request) {
 		return error(exception.errorCode().status(), exception.errorCode().name(), exception.getMessage(), request);
 	}
 
