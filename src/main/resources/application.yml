@@ -1,6 +1,10 @@
 spring:
   application:
     name: motodi-go-backend-core
+  servlet:
+    multipart:
+      max-file-size: ${KYC_MAX_FILE_SIZE_BYTES:5242880}
+      max-request-size: ${KYC_MAX_FILE_SIZE_BYTES:5242880}
 
 management:
   endpoints:
@@ -37,3 +41,18 @@ motodigo:
     enqueue: ${AFRICAS_TALKING_ENQUEUE:1}
     connect-timeout-ms: ${AFRICAS_TALKING_CONNECT_TIMEOUT_MS:3000}
     read-timeout-ms: ${AFRICAS_TALKING_READ_TIMEOUT_MS:5000}
+  kyc:
+    storage:
+      endpoint: ${KYC_STORAGE_ENDPOINT:http://localhost:9000}
+      region: ${KYC_STORAGE_REGION:us-east-1}
+      bucket: ${KYC_STORAGE_BUCKET:motodigo-kyc}
+      access-key: ${KYC_STORAGE_ACCESS_KEY:minioadmin}
+      secret-key: ${KYC_STORAGE_SECRET_KEY:minioadmin}
+      path-style: ${KYC_STORAGE_PATH_STYLE:true}
+    encryption:
+      active-key-id: ${KYC_ENCRYPTION_ACTIVE_KEY_ID:local}
+      keys:
+        local: ${KYC_ENCRYPTION_KEYS_LOCAL:bW90b2RpZ28tbG9jYWwta3ljLWtleS0zMi1ieXRlISE=}
+        prod: ${KYC_ENCRYPTION_KEYS_PROD:}
+    checksum-pepper: ${KYC_CHECKSUM_PEPPER:change-me-kyc-checksum-pepper}
+    max-file-size-bytes: ${KYC_MAX_FILE_SIZE_BYTES:5242880}

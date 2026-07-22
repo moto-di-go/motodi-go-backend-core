@@ -21,5 +21,16 @@ motodigo:
   otp:
     provider: ${OTP_PROVIDER:log}
     pepper: ${OTP_PEPPER:change-me-otp-pepper}
+  kyc:
+    storage:
+      endpoint: ${KYC_STORAGE_ENDPOINT:http://localhost:9000}
+      access-key: ${KYC_STORAGE_ACCESS_KEY:minioadmin}
+      secret-key: ${KYC_STORAGE_SECRET_KEY:minioadmin}
+    encryption:
+      active-key-id: ${KYC_ENCRYPTION_ACTIVE_KEY_ID:local}
+      keys:
+        local: ${KYC_ENCRYPTION_KEYS_LOCAL:bW90b2RpZ28tbG9jYWwta3ljLWtleS0zMi1ieXRlISE=}
+        prod: ${KYC_ENCRYPTION_KEYS_PROD:}
+    checksum-pepper: ${KYC_CHECKSUM_PEPPER:change-me-kyc-checksum-pepper}
   gis:
     routes-yaounde-path: ${GIS_ROUTES_YAOUNDE_PATH:./data/gis/routes_yaounde.gpkg}
