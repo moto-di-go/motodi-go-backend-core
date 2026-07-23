@@ -34,3 +34,11 @@ motodigo:
     checksum-pepper: ${KYC_CHECKSUM_PEPPER:change-me-kyc-checksum-pepper}
   gis:
     routes-yaounde-path: ${GIS_ROUTES_YAOUNDE_PATH:./data/gis/routes_yaounde.gpkg}
+  kyc:
+    storage:
+      endpoint: ${KYC_STORAGE_ENDPOINT:http://localhost:9000}
+      region: ${KYC_STORAGE_REGION:us-east-1}
+      bucket: ${KYC_STORAGE_BUCKET:motodigo-kyc}
+      access-key: ${KYC_STORAGE_ACCESS_KEY:change-me}
+      secret-key: ${KYC_STORAGE_SECRET_KEY:change-me}
+      path-style: ${KYC_STORAGE_PATH_STYLE:true}

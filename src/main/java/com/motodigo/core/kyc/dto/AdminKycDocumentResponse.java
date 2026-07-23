@@ -11,5 +11,6 @@ public record AdminKycDocumentResponse(
 		ProfileType profileType,
 		ValidationStatus profileValidationStatus,
 		String displayName,
-		List<OfficialDocumentResponse> documents) {
+		List<OfficialDocumentResponse> documents,
+		List<ValidationDecisionResponse> decisions) {
 }

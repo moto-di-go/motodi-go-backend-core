@@ -5,12 +5,7 @@ public class KycException extends RuntimeException {
 	private final KycErrorCode errorCode;
 
 	public KycException(KycErrorCode errorCode) {
-		super(errorCode.defaultMessage());
-		this.errorCode = errorCode;
-	}
-
-	public KycException(KycErrorCode errorCode, Throwable cause) {
-		super(errorCode.defaultMessage(), cause);
+		super(errorCode.message());
 		this.errorCode = errorCode;
 	}
 

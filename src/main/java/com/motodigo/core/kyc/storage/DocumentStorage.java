@@ -2,7 +2,7 @@ package com.motodigo.core.kyc.storage;
 
 public interface DocumentStorage {
 
-	String put(String objectKey, byte[] encryptedContent, String mimeType);
+	String put(String key, byte[] content, String mimeType);
 
 	byte[] get(String encryptedStorageKey);
 }

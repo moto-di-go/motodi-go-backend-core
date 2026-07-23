@@ -36,11 +36,7 @@ public class AuthExceptionHandler {
 
 	@ExceptionHandler(KycException.class)
 	ResponseEntity<ErrorResponse> handleKycException(KycException exception, HttpServletRequest request) {
-		String message = exception.errorCode().defaultMessage();
-		if (this.messageSource != null) {
-			message = this.messageSource.getMessage(exception.errorCode().messageKey(), null, message, request.getLocale());
-		}
-		return error(exception.errorCode().status(), exception.errorCode().name(), message, request);
+		return error(exception.errorCode().status(), exception.errorCode().name(), exception.getMessage(), request);
 	}
 
 	@ExceptionHandler(MethodArgumentNotValidException.class)

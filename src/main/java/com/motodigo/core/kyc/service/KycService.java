@@ -1,35 +1,41 @@
 package com.motodigo.core.kyc.service;
 
-import java.util.Comparator;
+import java.io.IOException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.EnumMap;
-import java.util.EnumSet;
+import java.util.HexFormat;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
+import java.util.Objects;
 import java.util.UUID;
 
+import com.motodigo.core.kyc.dto.AdminKycDecisionRequest;
+import com.motodigo.core.kyc.dto.AdminKycDecisionResponse;
 import com.motodigo.core.kyc.dto.AdminKycDocumentResponse;
+import com.motodigo.core.kyc.dto.AdminKycQueueItemResponse;
 import com.motodigo.core.kyc.dto.DocumentRequirementResponse;
 import com.motodigo.core.kyc.dto.DownloadedKycDocument;
 import com.motodigo.core.kyc.dto.KycDocumentsResponse;
 import com.motodigo.core.kyc.dto.OfficialDocumentResponse;
 import com.motodigo.core.kyc.dto.UploadKycDocumentResponse;
+import com.motodigo.core.kyc.dto.ValidationDecisionResponse;
 import com.motodigo.core.kyc.entity.AccessAction;
 import com.motodigo.core.kyc.entity.DocumentStatus;
 import com.motodigo.core.kyc.entity.DocumentType;
+import com.motodigo.core.kyc.entity.KycDecision;
 import com.motodigo.core.kyc.entity.KycProfileRecord;
 import com.motodigo.core.kyc.entity.OfficialDocumentRecord;
+import com.motodigo.core.kyc.entity.ValidationDecisionRecord;
 import com.motodigo.core.kyc.exception.KycErrorCode;
 import com.motodigo.core.kyc.exception.KycException;
 import com.motodigo.core.kyc.repository.KycRepository;
-import com.motodigo.core.kyc.service.FileValidationService.ValidatedFile;
 import com.motodigo.core.kyc.storage.DocumentStorage;
-import com.motodigo.core.profile.entity.ProfileRecord;
 import com.motodigo.core.profile.entity.ProfileType;
-import com.motodigo.core.profile.repository.ProfileRepository;
-import com.motodigo.core.profile.service.PermissionService;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import com.motodigo.core.profile.entity.ValidationStatus;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -38,69 +44,70 @@ import org.springframework.web.multipart.MultipartFile;
 @ConditionalOnProperty(prefix = "spring.datasource", name = "url")
 public class KycService {
 
-	private static final Set<DocumentType> DRIVER_REQUIREMENTS = EnumSet.of(
+	private static final long MAX_FILE_SIZE_BYTES = 5L * 1024L * 1024L;
+	private static final List<DocumentType> SELF_SERVICE_REQUIRED_DOCUMENTS = List.of(
 			DocumentType.CNI,
+			DocumentType.PROFILE_PHOTO,
 			DocumentType.DRIVER_LICENSE,
 			DocumentType.VEHICLE_REGISTRATION,
-			DocumentType.INSURANCE,
-			DocumentType.PROFILE_PHOTO);
-	private static final Set<DocumentStatus> COMPLETE_STATUSES = EnumSet.of(
-			DocumentStatus.PENDING_REVIEW,
-			DocumentStatus.ACCEPTED);
+			DocumentType.INSURANCE);
+	private static final List<String> ALLOWED_MIME_TYPES = List.of("image/jpeg", "image/png", "application/pdf");
+	private static final List<String> ALLOWED_EXTENSIONS = List.of(".jpg", ".jpeg", ".png", ".pdf");
 
-	private final ProfileRepository profileRepository;
-	private final PermissionService permissionService;
 	private final KycRepository kycRepository;
-	private final FileValidationService fileValidationService;
-	private final KycCryptoService cryptoService;
 	private final DocumentStorage documentStorage;
 
-	public KycService(ProfileRepository profileRepository, PermissionService permissionService, KycRepository kycRepository,
-			FileValidationService fileValidationService, KycCryptoService cryptoService, DocumentStorage documentStorage) {
-		this.profileRepository = profileRepository;
-		this.permissionService = permissionService;
+	public KycService(KycRepository kycRepository, DocumentStorage documentStorage) {
 		this.kycRepository = kycRepository;
-		this.fileValidationService = fileValidationService;
-		this.cryptoService = cryptoService;
 		this.documentStorage = documentStorage;
 	}
 
 	@Transactional(readOnly = true)
-	public KycDocumentsResponse listCurrentUserDocuments(UUID userId) {
-		ProfileRecord profile = eligibleActiveProfile(userId);
+	public KycDocumentsResponse listCurrentDocuments(UUID userId, UUID activeProfileId) {
+		KycProfileRecord profile = ownedActiveProfile(userId, activeProfileId);
 		List<OfficialDocumentRecord> documents = this.kycRepository.findDocumentsByProfile(profile.id());
-		return new KycDocumentsResponse(profile.id(), profile.type(), profile.validationStatus(),
-				requirements(profile.type(), documents), documents.stream().map(OfficialDocumentResponse::from).toList());
+		return KycDocumentsResponse.from(profile.id(), profile.type(), profile.validationStatus(),
+				requirements(profile.type(), documents), documents);
 	}
 
 	@Transactional
-	public UploadKycDocumentResponse uploadDocument(UUID userId, DocumentType type, UUID vehicleId, MultipartFile file) {
-		ProfileRecord profile = eligibleActiveProfile(userId);
-		requireDocumentType(profile.type(), type);
-		if (vehicleId != null && !this.kycRepository.vehicleBelongsToProfile(profile.id(), vehicleId)) {
-			throw new KycException(KycErrorCode.KYC_ACCESS_DENIED);
+	public UploadKycDocumentResponse uploadDocument(UUID userId, UUID activeProfileId, DocumentType type, UUID vehicleId,
+			MultipartFile file) {
+		KycProfileRecord profile = ownedActiveProfile(userId, activeProfileId);
+		if (!requiredDocumentTypes(profile.type()).contains(type)) {
+			throw new KycException(KycErrorCode.KYC_DOCUMENT_INVALID);
 		}
+		byte[] content = content(file);
+		String mimeType = normalizedMimeType(file);
+		String fileName = sanitizedFileName(file.getOriginalFilename(), type);
+		validateFile(fileName, mimeType, content.length);
 
-		ValidatedFile validatedFile = this.fileValidationService.validate(file);
-		String checksum = this.cryptoService.checksum(validatedFile.bytes());
-		byte[] encrypted = this.cryptoService.encrypt(validatedFile.bytes());
-		String storageKey = this.documentStorage.put(objectKey(profile.id()), encrypted, validatedFile.mimeType());
-
-		OfficialDocumentRecord saved;
+		String checksum = sha256(content);
+		String storageKey = "kyc/" + profile.id() + "/" + UUID.randomUUID() + "-" + fileName + ".enc";
+		String encryptedStorageKey = this.documentStorage.put(storageKey, content, mimeType);
+		OfficialDocumentRecord document;
 		try {
-			saved = this.kycRepository.saveDocument(profile.id(), vehicleId, type, storageKey, validatedFile.mimeType(),
-					validatedFile.bytes().length, checksum);
+			document = this.kycRepository.saveDocument(profile.id(), vehicleId, type, DocumentStatus.PENDING_REVIEW,
+					encryptedStorageKey, fileName, mimeType, content.length, checksum);
 		}
 		catch (DuplicateKeyException ex) {
-			throw new KycException(KycErrorCode.DOCUMENT_DUPLICATE, ex);
+			throw new KycException(KycErrorCode.KYC_DOCUMENT_DUPLICATE);
 		}
 
 		List<OfficialDocumentRecord> documents = this.kycRepository.findDocumentsByProfile(profile.id());
-		if (isComplete(profile.type(), documents)) {
-			this.kycRepository.markProfilePending(profile.id());
+		List<DocumentRequirementResponse> requirements = requirements(profile.type(), documents);
+		ValidationStatus validationStatus = profile.validationStatus();
+		if (isComplete(requirements) && validationStatus != ValidationStatus.PENDING) {
+			validationStatus = ValidationStatus.PENDING;
+			this.kycRepository.updateProfileStatus(profile.id(), validationStatus);
 		}
-		return new UploadKycDocumentResponse(profile.id(), profile.validationStatus(), OfficialDocumentResponse.from(saved),
-				requirements(profile.type(), documents));
+		return UploadKycDocumentResponse.from(profile.id(), validationStatus, document, requirements);
+	}
+
+	@Transactional(readOnly = true)
+	public List<AdminKycQueueItemResponse> listPending(AdminAccess adminAccess) {
+		requireAdminReview(adminAccess);
+		return this.kycRepository.findPendingQueue();
 	}
 
 	@Transactional
@@ -115,42 +122,70 @@ public class KycService {
 					adminAccess.actorRole(), adminAccess.correlationId());
 		}
 		return new AdminKycDocumentResponse(profile.id(), profile.type(), profile.validationStatus(), profile.displayName(),
-				documents.stream().map(OfficialDocumentResponse::from).toList());
+				documents.stream().map(OfficialDocumentResponse::from).toList(),
+				this.kycRepository.findDecisionsByProfile(profileId).stream()
+						.map(ValidationDecisionResponse::from)
+				.toList());
 	}
 
 	@Transactional
 	public DownloadedKycDocument downloadDocumentForAdmin(UUID documentId, AdminAccess adminAccess) {
 		requireAdminReview(adminAccess);
 		OfficialDocumentRecord document = this.kycRepository.findDocumentById(documentId)
-				.orElseThrow(() -> new KycException(KycErrorCode.DOCUMENT_NOT_FOUND));
+				.orElseThrow(() -> new KycException(KycErrorCode.KYC_DOCUMENT_NOT_FOUND));
 		KycProfileRecord profile = this.kycRepository.findProfileById(document.profileId())
 				.orElseThrow(() -> new KycException(KycErrorCode.KYC_PROFILE_NOT_ELIGIBLE));
 		requireEligibleProfile(profile.type());
 		this.kycRepository.saveAudit(document.id(), adminAccess.actorProfileId(), AccessAction.DOWNLOAD,
 				adminAccess.actorRole(), adminAccess.correlationId());
-		byte[] encrypted = this.documentStorage.get(document.encryptedStorageKey());
-		return new DownloadedKycDocument(document, this.cryptoService.decrypt(encrypted));
+		return new DownloadedKycDocument(document, this.documentStorage.get(document.encryptedStorageKey()));
 	}
 
-	private ProfileRecord eligibleActiveProfile(UUID userId) {
-		ProfileRecord profile = this.profileRepository.findActiveByUserId(userId)
+	@Transactional
+	public AdminKycDecisionResponse decide(UUID profileId, AdminKycDecisionRequest request, AdminAccess adminAccess) {
+		requireAdminDecision(adminAccess);
+		if (request.decision() == KycDecision.REJECT && isBlank(request.reason())) {
+			throw new KycException(KycErrorCode.KYC_DECISION_REASON_REQUIRED);
+		}
+
+		KycProfileRecord profile = this.kycRepository.lockProfileForDecision(profileId)
 				.orElseThrow(() -> new KycException(KycErrorCode.KYC_PROFILE_NOT_ELIGIBLE));
 		requireEligibleProfile(profile.type());
-		if (!this.permissionService.allowedActions(profile).contains("KYC_UPLOAD")) {
-			throw new KycException(KycErrorCode.KYC_ACCESS_DENIED);
+		if (profile.validationStatus() != ValidationStatus.PENDING) {
+			throw new KycException(KycErrorCode.KYC_DECISION_NOT_ALLOWED);
 		}
-		return profile;
+
+		List<OfficialDocumentRecord> pendingDocuments = this.kycRepository.findPendingDocumentsByProfile(profileId);
+		if (pendingDocuments.isEmpty()) {
+			throw new KycException(KycErrorCode.KYC_DECISION_NOT_ALLOWED);
+		}
+
+		ValidationStatus profileStatus = request.decision() == KycDecision.VALIDATE
+				? ValidationStatus.VALIDATED
+				: ValidationStatus.REJECTED;
+		DocumentStatus documentStatus = request.decision() == KycDecision.VALIDATE
+				? DocumentStatus.ACCEPTED
+				: DocumentStatus.REJECTED;
+		AccessAction accessAction = request.decision() == KycDecision.VALIDATE ? AccessAction.APPROVE : AccessAction.REJECT;
+		String reason = blankToNull(request.reason());
+
+		this.kycRepository.updateProfileStatus(profileId, profileStatus);
+		this.kycRepository.updatePendingDocuments(profileId, documentStatus, request.decision() == KycDecision.REJECT ? reason : null);
+		ValidationDecisionRecord decisionRecord = this.kycRepository.saveDecision(profileId, adminAccess.actorProfileId(),
+				request.decision(), reason);
+		for (OfficialDocumentRecord document : pendingDocuments) {
+			this.kycRepository.saveAudit(document.id(), adminAccess.actorProfileId(), accessAction,
+					adminAccess.actorRole(), adminAccess.correlationId());
+		}
+		this.kycRepository.queueKycDecisionNotification(profile.userId(), request.decision(), profile.displayName(), reason);
+
+		return new AdminKycDecisionResponse(profileId, profileStatus, request.decision(),
+				ValidationDecisionResponse.from(decisionRecord));
 	}
 
 	private static void requireEligibleProfile(ProfileType profileType) {
 		if (profileType != ProfileType.MOTOTAXI && profileType != ProfileType.TRANSPORTER) {
 			throw new KycException(KycErrorCode.KYC_PROFILE_NOT_ELIGIBLE);
-		}
-	}
-
-	private static void requireDocumentType(ProfileType profileType, DocumentType documentType) {
-		if (!requiredTypes(profileType).contains(documentType)) {
-			throw new KycException(KycErrorCode.DOCUMENT_TYPE_NOT_ALLOWED);
 		}
 	}
 
@@ -161,37 +196,122 @@ public class KycService {
 		}
 	}
 
-	private static List<DocumentRequirementResponse> requirements(ProfileType profileType, List<OfficialDocumentRecord> documents) {
+	private static void requireAdminDecision(AdminAccess adminAccess) {
+		if (adminAccess == null || adminAccess.actorProfileId() == null
+				|| !adminAccess.permissions().contains("KYC_DECIDE")) {
+			throw new KycException(KycErrorCode.KYC_ACCESS_DENIED);
+		}
+	}
+
+	private static boolean isBlank(String value) {
+		return value == null || value.isBlank();
+	}
+
+	private static String blankToNull(String value) {
+		return isBlank(value) ? null : value.trim();
+	}
+
+	private KycProfileRecord ownedActiveProfile(UUID userId, UUID activeProfileId) {
+		if (userId == null || activeProfileId == null) {
+			throw new KycException(KycErrorCode.KYC_ACCESS_DENIED);
+		}
+		KycProfileRecord profile = this.kycRepository.findProfileById(activeProfileId)
+				.orElseThrow(() -> new KycException(KycErrorCode.KYC_PROFILE_NOT_ELIGIBLE));
+		if (!Objects.equals(profile.userId(), userId)) {
+			throw new KycException(KycErrorCode.KYC_ACCESS_DENIED);
+		}
+		requireEligibleProfile(profile.type());
+		if (profile.validationStatus() == ValidationStatus.SUSPENDED) {
+			throw new KycException(KycErrorCode.KYC_ACCESS_DENIED);
+		}
+		return profile;
+	}
+
+	private static List<DocumentRequirementResponse> requirements(ProfileType profileType,
+			List<OfficialDocumentRecord> documents) {
 		Map<DocumentType, OfficialDocumentRecord> latestByType = new EnumMap<>(DocumentType.class);
-		documents.stream()
-				.sorted(Comparator.comparing(OfficialDocumentRecord::uploadedAt).reversed())
-				.forEach(document -> latestByType.putIfAbsent(document.type(), document));
-		return requiredTypes(profileType).stream()
-				.sorted(Comparator.comparing(Enum::name))
-				.map(type -> {
-					OfficialDocumentRecord document = latestByType.get(type);
-					return new DocumentRequirementResponse(type, true, document != null,
-							document == null ? null : document.status());
-				})
+		for (OfficialDocumentRecord document : documents) {
+			latestByType.putIfAbsent(document.type(), document);
+		}
+		return requiredDocumentTypes(profileType).stream()
+				.map(type -> requirement(type, latestByType.get(type)))
 				.toList();
 	}
 
-	private static boolean isComplete(ProfileType profileType, List<OfficialDocumentRecord> documents) {
-		Map<DocumentType, DocumentStatus> latestStatusByType = new EnumMap<>(DocumentType.class);
-		documents.stream()
-				.sorted(Comparator.comparing(OfficialDocumentRecord::uploadedAt).reversed())
-				.forEach(document -> latestStatusByType.putIfAbsent(document.type(), document.status()));
-		return requiredTypes(profileType).stream()
-				.allMatch(type -> COMPLETE_STATUSES.contains(latestStatusByType.get(type)));
+	private static DocumentRequirementResponse requirement(DocumentType type, OfficialDocumentRecord latest) {
+		DocumentStatus status = latest == null ? null : latest.status();
+		boolean uploaded = status == DocumentStatus.PENDING_REVIEW
+				|| status == DocumentStatus.ACCEPTED
+				|| status == DocumentStatus.UPLOADED
+				|| status == DocumentStatus.ENCRYPTED;
+		return new DocumentRequirementResponse(type, true, uploaded, status);
 	}
 
-	private static Set<DocumentType> requiredTypes(ProfileType profileType) {
+	private static List<DocumentType> requiredDocumentTypes(ProfileType profileType) {
 		requireEligibleProfile(profileType);
-		return DRIVER_REQUIREMENTS;
+		return SELF_SERVICE_REQUIRED_DOCUMENTS;
 	}
 
-	private static String objectKey(UUID profileId) {
-		return "kyc/" + profileId + "/" + UUID.randomUUID() + ".enc";
+	private static boolean isComplete(List<DocumentRequirementResponse> requirements) {
+		return requirements.stream().allMatch(DocumentRequirementResponse::uploaded);
+	}
+
+	private static byte[] content(MultipartFile file) {
+		if (file == null || file.isEmpty()) {
+			throw new KycException(KycErrorCode.KYC_DOCUMENT_INVALID);
+		}
+		try {
+			return file.getBytes();
+		}
+		catch (IOException ex) {
+			throw new KycException(KycErrorCode.KYC_DOCUMENT_INVALID);
+		}
+	}
+
+	private static void validateFile(String fileName, String mimeType, long sizeBytes) {
+		if (sizeBytes <= 0 || sizeBytes > MAX_FILE_SIZE_BYTES) {
+			throw new KycException(KycErrorCode.KYC_DOCUMENT_INVALID);
+		}
+		if (!ALLOWED_MIME_TYPES.contains(mimeType)) {
+			throw new KycException(KycErrorCode.KYC_DOCUMENT_INVALID);
+		}
+		String lowerName = fileName.toLowerCase(Locale.ROOT);
+		if (ALLOWED_EXTENSIONS.stream().noneMatch(lowerName::endsWith)) {
+			throw new KycException(KycErrorCode.KYC_DOCUMENT_INVALID);
+		}
+	}
+
+	private static String normalizedMimeType(MultipartFile file) {
+		String value = file.getContentType();
+		if (value == null || value.isBlank()) {
+			String name = file.getOriginalFilename() == null ? "" : file.getOriginalFilename().toLowerCase(Locale.ROOT);
+			if (name.endsWith(".pdf")) return "application/pdf";
+			if (name.endsWith(".png")) return "image/png";
+			if (name.endsWith(".jpg") || name.endsWith(".jpeg")) return "image/jpeg";
+			return "application/octet-stream";
+		}
+		return value.toLowerCase(Locale.ROOT);
+	}
+
+	private static String sanitizedFileName(String originalFileName, DocumentType type) {
+		String fallback = type.name().toLowerCase(Locale.ROOT) + ".jpg";
+		String source = originalFileName == null || originalFileName.isBlank() ? fallback : originalFileName;
+		String onlyName = source.replace("\\", "/");
+		int slash = onlyName.lastIndexOf('/');
+		if (slash >= 0) {
+			onlyName = onlyName.substring(slash + 1);
+		}
+		String sanitized = onlyName.replaceAll("[^A-Za-z0-9._-]", "-");
+		return sanitized.isBlank() ? fallback : sanitized;
+	}
+
+	private static String sha256(byte[] content) {
+		try {
+			return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(content));
+		}
+		catch (NoSuchAlgorithmException ex) {
+			throw new IllegalStateException("SHA-256 unavailable", ex);
+		}
 	}
 
 	public record AdminAccess(
