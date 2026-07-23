@@ -13,6 +13,7 @@ public record OfficialDocumentResponse(
 		UUID vehicleId,
 		DocumentType type,
 		DocumentStatus status,
+		String fileName,
 		String mimeType,
 		long sizeBytes,
 		String rejectionReason,
@@ -21,7 +22,7 @@ public record OfficialDocumentResponse(
 
 	public static OfficialDocumentResponse from(OfficialDocumentRecord document) {
 		return new OfficialDocumentResponse(document.id(), document.profileId(), document.vehicleId(), document.type(),
-				document.status(), document.mimeType(), document.sizeBytes(), document.rejectionReason(),
+				document.status(), document.fileName(), document.mimeType(), document.sizeBytes(), document.rejectionReason(),
 				document.uploadedAt(), document.updatedAt());
 	}
 }

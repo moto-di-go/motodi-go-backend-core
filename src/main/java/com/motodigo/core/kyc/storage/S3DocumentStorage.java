@@ -9,12 +9,14 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 
 @Component
@@ -33,6 +35,21 @@ public class S3DocumentStorage implements DocumentStorage {
 						properties.storage().accessKey(), properties.storage().secretKey())))
 				.forcePathStyle(properties.storage().pathStyle())
 				.build();
+	}
+
+	@Override
+	public String put(String key, byte[] content, String mimeType) {
+		try {
+			this.s3Client.putObject(PutObjectRequest.builder()
+					.bucket(this.properties.storage().bucket())
+					.key(key)
+					.contentType(mimeType)
+					.build(), RequestBody.fromBytes(content));
+			return "s3://" + this.properties.storage().bucket() + "/" + key;
+		}
+		catch (S3Exception | IllegalArgumentException ex) {
+			throw new KycException(KycErrorCode.KYC_STORAGE_FAILED);
+		}
 	}
 
 	@Override

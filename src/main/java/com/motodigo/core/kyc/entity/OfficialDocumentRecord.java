@@ -10,6 +10,7 @@ public record OfficialDocumentRecord(
 		DocumentType type,
 		DocumentStatus status,
 		String encryptedStorageKey,
+		String fileName,
 		String mimeType,
 		long sizeBytes,
 		String rejectionReason,

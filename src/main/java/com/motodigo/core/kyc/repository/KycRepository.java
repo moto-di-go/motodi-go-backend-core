@@ -70,7 +70,7 @@ public class KycRepository {
 
 	public List<OfficialDocumentRecord> findDocumentsByProfile(UUID profileId) {
 		return this.jdbcTemplate.query("""
-				SELECT id, profile_id, vehicle_id, type, status, encrypted_storage_key, mime_type, size_bytes,
+				SELECT id, profile_id, vehicle_id, type, status, encrypted_storage_key, file_name, mime_type, size_bytes,
 				       rejection_reason, uploaded_at, updated_at
 				FROM official_documents
 				WHERE profile_id = ?
@@ -80,7 +80,7 @@ public class KycRepository {
 
 	public Optional<OfficialDocumentRecord> findDocumentById(UUID documentId) {
 		return this.jdbcTemplate.query("""
-				SELECT id, profile_id, vehicle_id, type, status, encrypted_storage_key, mime_type, size_bytes,
+				SELECT id, profile_id, vehicle_id, type, status, encrypted_storage_key, file_name, mime_type, size_bytes,
 				       rejection_reason, uploaded_at, updated_at
 				FROM official_documents
 				WHERE id = ?
@@ -89,7 +89,7 @@ public class KycRepository {
 
 	public List<OfficialDocumentRecord> findPendingDocumentsByProfile(UUID profileId) {
 		return this.jdbcTemplate.query("""
-				SELECT id, profile_id, vehicle_id, type, status, encrypted_storage_key, mime_type, size_bytes,
+				SELECT id, profile_id, vehicle_id, type, status, encrypted_storage_key, file_name, mime_type, size_bytes,
 				       rejection_reason, uploaded_at, updated_at
 				FROM official_documents
 				WHERE profile_id = ? AND status = 'PENDING_REVIEW'
@@ -124,6 +124,19 @@ public class KycRepository {
 				""", status.name(), blankToNull(rejectionReason), profileId);
 	}
 
+	public OfficialDocumentRecord saveDocument(UUID profileId, UUID vehicleId, DocumentType type, DocumentStatus status,
+			String encryptedStorageKey, String fileName, String mimeType, long sizeBytes, String checksum) {
+		return this.jdbcTemplate.queryForObject("""
+				INSERT INTO official_documents (
+				  profile_id, vehicle_id, type, status, encrypted_storage_key, file_name, mime_type, size_bytes, checksum
+				)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+				RETURNING id, profile_id, vehicle_id, type, status, encrypted_storage_key, file_name, mime_type, size_bytes,
+				          rejection_reason, uploaded_at, updated_at
+				""", this::mapDocument, profileId, vehicleId, type.name(), status.name(), encryptedStorageKey,
+				blankToNull(fileName), mimeType, sizeBytes, checksum);
+	}
+
 	public ValidationDecisionRecord saveDecision(UUID profileId, UUID adminProfileId, KycDecision decision, String reason) {
 		return this.jdbcTemplate.queryForObject("""
 				INSERT INTO validation_decisions (profile_id, admin_profile_id, decision, reason)
@@ -141,9 +154,10 @@ public class KycRepository {
 
 	public void queueKycDecisionNotification(UUID userId, KycDecision decision, String profileDisplayName, String reason) {
 		this.jdbcTemplate.update("""
-				INSERT INTO notifications (user_id, type, title, body, status, scheduled_at)
-				VALUES (?, 'KYC_DECISION', ?, ?, 'QUEUED', now())
-				""", userId, notificationTitle(decision), notificationBody(decision, profileDisplayName, reason));
+				INSERT INTO notifications (user_id, type, title, body, status, scheduled_at, metadata_json)
+				VALUES (?, 'KYC_DECISION', ?, ?, 'QUEUED', now(), ?::jsonb)
+				""", userId, notificationTitle(decision), notificationBody(decision, profileDisplayName, reason),
+				notificationMetadata(decision, reason));
 	}
 
 	private AdminKycQueueItemResponse mapQueueItem(ResultSet rs, int rowNum) throws SQLException {
@@ -174,6 +188,7 @@ public class KycRepository {
 				DocumentType.valueOf(rs.getString("type")),
 				DocumentStatus.valueOf(rs.getString("status")),
 				rs.getString("encrypted_storage_key"),
+				rs.getString("file_name"),
 				rs.getString("mime_type"),
 				rs.getLong("size_bytes"),
 				rs.getString("rejection_reason"),
@@ -209,5 +224,13 @@ public class KycRepository {
 			return "Votre profil " + displayName + " a ete valide.";
 		}
 		return "Votre profil " + displayName + " a ete rejete. Motif: " + reason;
+	}
+
+	private static String notificationMetadata(KycDecision decision, String reason) {
+		String status = decision == KycDecision.VALIDATE ? "VALIDATED" : "REJECTED";
+		String escapedReason = reason == null ? null : reason.replace("\\", "\\\\").replace("\"", "\\\"");
+		return escapedReason == null
+				? "{\"type\":\"KYC_DECISION\",\"status\":\"" + status + "\"}"
+				: "{\"type\":\"KYC_DECISION\",\"status\":\"" + status + "\",\"reason\":\"" + escapedReason + "\"}";
 	}
 }

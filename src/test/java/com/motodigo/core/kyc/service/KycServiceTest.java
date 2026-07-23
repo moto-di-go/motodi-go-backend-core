@@ -27,11 +27,14 @@ import com.motodigo.core.kyc.service.KycService.AdminAccess;
 import com.motodigo.core.kyc.storage.DocumentStorage;
 import com.motodigo.core.profile.entity.ProfileType;
 import com.motodigo.core.profile.entity.ValidationStatus;
+import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.dao.DuplicateKeyException;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.web.MockMultipartFile;
 
 @ExtendWith(MockitoExtension.class)
 class KycServiceTest {
@@ -142,7 +145,7 @@ class KycServiceTest {
 		UUID documentId = UUID.randomUUID();
 		UUID actorId = UUID.randomUUID();
 		OfficialDocumentRecord document = new OfficialDocumentRecord(documentId, profileId, null, DocumentType.CNI,
-				DocumentStatus.PENDING_REVIEW, "s3://motodigo-kyc/kyc/doc.pdf", "application/pdf", 10, null,
+				DocumentStatus.PENDING_REVIEW, "s3://motodigo-kyc/kyc/doc.pdf", "doc.pdf", "application/pdf", 10, null,
 				Instant.now(), Instant.now());
 		when(this.kycRepository.findDocumentById(documentId)).thenReturn(Optional.of(document));
 		when(this.kycRepository.findProfileById(profileId))
@@ -156,6 +159,94 @@ class KycServiceTest {
 		verify(this.documentStorage).get("s3://motodigo-kyc/kyc/doc.pdf");
 	}
 
+	@Test
+	void listCurrentDocumentsBuildsRequirementsForActiveOwner() {
+		UUID userId = UUID.randomUUID();
+		UUID profileId = UUID.randomUUID();
+		when(this.kycRepository.findProfileById(profileId))
+				.thenReturn(Optional.of(profile(profileId, userId, ProfileType.MOTOTAXI, ValidationStatus.PENDING)));
+		when(this.kycRepository.findDocumentsByProfile(profileId)).thenReturn(List.of(
+				document(profileId, DocumentType.CNI, DocumentStatus.ACCEPTED),
+				document(profileId, DocumentType.PROFILE_PHOTO, DocumentStatus.REJECTED)));
+
+		var response = this.service.listCurrentDocuments(userId, profileId);
+
+		Assertions.assertThat(response.requirements()).hasSize(5);
+		Assertions.assertThat(response.requirements())
+				.anySatisfy(requirement -> {
+					Assertions.assertThat(requirement.type()).isEqualTo(DocumentType.CNI);
+					Assertions.assertThat(requirement.uploaded()).isTrue();
+				})
+				.anySatisfy(requirement -> {
+					Assertions.assertThat(requirement.type()).isEqualTo(DocumentType.PROFILE_PHOTO);
+					Assertions.assertThat(requirement.uploaded()).isFalse();
+					Assertions.assertThat(requirement.latestStatus()).isEqualTo(DocumentStatus.REJECTED);
+				});
+	}
+
+	@Test
+	void uploadRejectsInvalidFileBeforeStorage() {
+		UUID userId = UUID.randomUUID();
+		UUID profileId = UUID.randomUUID();
+		when(this.kycRepository.findProfileById(profileId))
+				.thenReturn(Optional.of(profile(profileId, userId, ProfileType.MOTOTAXI, ValidationStatus.PENDING)));
+
+		MockMultipartFile file = new MockMultipartFile("file", "doc.txt", "text/plain", "bad".getBytes());
+
+		assertThatThrownBy(() -> this.service.uploadDocument(userId, profileId, DocumentType.CNI, null, file))
+				.isInstanceOf(KycException.class)
+				.extracting("errorCode")
+				.isEqualTo(KycErrorCode.KYC_DOCUMENT_INVALID);
+
+		verify(this.documentStorage, never()).put(any(), any(), any());
+	}
+
+	@Test
+	void uploadMapsDuplicateChecksumToDuplicateDocumentError() {
+		UUID userId = UUID.randomUUID();
+		UUID profileId = UUID.randomUUID();
+		MockMultipartFile file = new MockMultipartFile("file", "permis.jpg", "image/jpeg", new byte[] { 1, 2, 3 });
+		when(this.kycRepository.findProfileById(profileId))
+				.thenReturn(Optional.of(profile(profileId, userId, ProfileType.MOTOTAXI, ValidationStatus.PENDING)));
+		when(this.documentStorage.put(any(), any(byte[].class), eq("image/jpeg")))
+				.thenReturn("s3://bucket/kyc/doc.enc");
+		when(this.kycRepository.saveDocument(eq(profileId), eq(null), eq(DocumentType.DRIVER_LICENSE),
+				eq(DocumentStatus.PENDING_REVIEW), eq("s3://bucket/kyc/doc.enc"), eq("permis.jpg"),
+				eq("image/jpeg"), eq(3L), any())).thenThrow(new DuplicateKeyException("duplicate checksum"));
+
+		assertThatThrownBy(() -> this.service.uploadDocument(userId, profileId, DocumentType.DRIVER_LICENSE, null, file))
+				.isInstanceOf(KycException.class)
+				.extracting("errorCode")
+				.isEqualTo(KycErrorCode.KYC_DOCUMENT_DUPLICATE);
+	}
+
+	@Test
+	void uploadStoresDocumentAndMarksRejectedProfilePendingWhenComplete() {
+		UUID userId = UUID.randomUUID();
+		UUID profileId = UUID.randomUUID();
+		MockMultipartFile file = new MockMultipartFile("file", "carte-grise.jpg", "image/jpeg", new byte[] { 1, 2, 3 });
+		OfficialDocumentRecord saved = document(profileId, DocumentType.VEHICLE_REGISTRATION,
+				DocumentStatus.PENDING_REVIEW);
+		when(this.kycRepository.findProfileById(profileId))
+				.thenReturn(Optional.of(profile(profileId, userId, ProfileType.TRANSPORTER, ValidationStatus.REJECTED)));
+		when(this.documentStorage.put(any(), any(byte[].class), eq("image/jpeg")))
+				.thenReturn("s3://bucket/kyc/doc.enc");
+		when(this.kycRepository.saveDocument(eq(profileId), eq(null), eq(DocumentType.VEHICLE_REGISTRATION),
+				eq(DocumentStatus.PENDING_REVIEW), eq("s3://bucket/kyc/doc.enc"), eq("carte-grise.jpg"),
+				eq("image/jpeg"), eq(3L), any())).thenReturn(saved);
+		when(this.kycRepository.findDocumentsByProfile(profileId)).thenReturn(List.of(
+				document(profileId, DocumentType.CNI, DocumentStatus.ACCEPTED),
+				document(profileId, DocumentType.PROFILE_PHOTO, DocumentStatus.ACCEPTED),
+				document(profileId, DocumentType.DRIVER_LICENSE, DocumentStatus.ACCEPTED),
+				saved,
+				document(profileId, DocumentType.INSURANCE, DocumentStatus.ACCEPTED)));
+
+		var response = this.service.uploadDocument(userId, profileId, DocumentType.VEHICLE_REGISTRATION, null, file);
+
+		Assertions.assertThat(response.profileValidationStatus()).isEqualTo(ValidationStatus.PENDING);
+		verify(this.kycRepository).updateProfileStatus(profileId, ValidationStatus.PENDING);
+	}
+
 	private static AdminAccess access(String permission) {
 		return new AdminAccess(UUID.randomUUID(), "ADMIN", List.of(permission), "corr-1");
 	}
@@ -165,8 +256,12 @@ class KycServiceTest {
 	}
 
 	private static OfficialDocumentRecord document(UUID profileId) {
-		return new OfficialDocumentRecord(UUID.randomUUID(), profileId, null, DocumentType.CNI,
-				DocumentStatus.PENDING_REVIEW, "s3://bucket/doc.enc", "application/pdf", 10, null, Instant.now(),
+		return document(profileId, DocumentType.CNI, DocumentStatus.PENDING_REVIEW);
+	}
+
+	private static OfficialDocumentRecord document(UUID profileId, DocumentType type, DocumentStatus status) {
+		return new OfficialDocumentRecord(UUID.randomUUID(), profileId, null, type,
+				status, "s3://bucket/doc.enc", type.name().toLowerCase() + ".jpg", "image/jpeg", 10, null, Instant.now(),
 				Instant.now());
 	}
 

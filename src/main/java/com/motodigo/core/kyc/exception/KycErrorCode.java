@@ -5,6 +5,8 @@ import org.springframework.http.HttpStatus;
 public enum KycErrorCode {
 	KYC_PROFILE_NOT_ELIGIBLE(HttpStatus.FORBIDDEN, "Profil non eligible au KYC documentaire."),
 	KYC_ACCESS_DENIED(HttpStatus.FORBIDDEN, "Acces KYC refuse."),
+	KYC_DOCUMENT_INVALID(HttpStatus.BAD_REQUEST, "Document KYC invalide."),
+	KYC_DOCUMENT_DUPLICATE(HttpStatus.CONFLICT, "Ce fichier a déjà été téléversé. Choisissez-en un autre."),
 	KYC_DECISION_REASON_REQUIRED(HttpStatus.BAD_REQUEST, "Un motif est obligatoire pour rejeter un profil KYC."),
 	KYC_DECISION_NOT_ALLOWED(HttpStatus.CONFLICT, "Decision KYC impossible pour ce profil."),
 	KYC_DOCUMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "Document KYC introuvable."),
