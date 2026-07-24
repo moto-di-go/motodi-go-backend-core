@@ -1,6 +1,10 @@
 spring:
   application:
     name: motodi-go-backend-core
+  servlet:
+    multipart:
+      max-file-size: ${KYC_MAX_FILE_SIZE_BYTES:5242880}
+      max-request-size: ${KYC_MAX_FILE_SIZE_BYTES:5242880}
 
 management:
   endpoints:

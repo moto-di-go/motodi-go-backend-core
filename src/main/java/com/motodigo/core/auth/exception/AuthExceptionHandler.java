@@ -7,6 +7,7 @@ import com.motodigo.core.auth.dto.ErrorResponse;
 import com.motodigo.core.kyc.exception.KycException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
+import org.springframework.context.MessageSource;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -18,6 +19,16 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 public class AuthExceptionHandler {
 
 	private static final String CORRELATION_ID_HEADER = "X-Correlation-Id";
+
+	private final MessageSource messageSource;
+
+	public AuthExceptionHandler() {
+		this.messageSource = null;
+	}
+
+	public AuthExceptionHandler(MessageSource messageSource) {
+		this.messageSource = messageSource;
+	}
 
 	@ExceptionHandler(AuthException.class)
 	ResponseEntity<ErrorResponse> handleAuthException(AuthException exception, HttpServletRequest request) {
