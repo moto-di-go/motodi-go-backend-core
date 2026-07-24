@@ -106,8 +106,17 @@ public class KycService {
 
 	@Transactional(readOnly = true)
 	public List<AdminKycQueueItemResponse> listPending(AdminAccess adminAccess) {
+		return listReviews(adminAccess, null, ValidationStatus.PENDING);
+	}
+
+	@Transactional(readOnly = true)
+	public List<AdminKycQueueItemResponse> listReviews(AdminAccess adminAccess, ProfileType profileType,
+			ValidationStatus status) {
 		requireAdminReview(adminAccess);
-		return this.kycRepository.findPendingQueue();
+		if (profileType != null) {
+			requireEligibleProfile(profileType);
+		}
+		return this.kycRepository.findReviewQueue(profileType, status == null ? ValidationStatus.PENDING : status);
 	}
 
 	@Transactional

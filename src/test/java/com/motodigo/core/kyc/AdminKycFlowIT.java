@@ -76,6 +76,14 @@ class AdminKycFlowIT {
 		var pending = exchange(adminToken, HttpMethod.GET, "/api/v1/admin/kyc/pending", null, Object.class);
 		assertThat(pending.getStatusCode()).isEqualTo(HttpStatus.OK);
 
+		var filtered = exchange(adminToken, HttpMethod.GET,
+				"/api/v1/admin/kyc/reviews?profileType=MOTOTAXI&status=PENDING", null, Object.class);
+		assertThat(filtered.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+		var invalidFilter = exchange(adminToken, HttpMethod.GET, "/api/v1/admin/kyc/reviews?status=UNKNOWN", null,
+				Object.class);
+		assertThat(invalidFilter.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
 		var decision = exchange(adminToken, HttpMethod.POST, "/api/v1/admin/kyc/" + profileId + "/decision",
 				Map.of("decision", "VALIDATE"), Map.class);
 		assertThat(decision.getStatusCode()).isEqualTo(HttpStatus.OK);

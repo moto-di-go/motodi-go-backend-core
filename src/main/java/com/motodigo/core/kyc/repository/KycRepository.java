@@ -4,6 +4,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -33,7 +34,12 @@ public class KycRepository {
 	}
 
 	public List<AdminKycQueueItemResponse> findPendingQueue() {
-		return this.jdbcTemplate.query("""
+		return findReviewQueue(null, ValidationStatus.PENDING);
+	}
+
+	public List<AdminKycQueueItemResponse> findReviewQueue(ProfileType profileType, ValidationStatus status) {
+		List<Object> params = new ArrayList<>();
+		StringBuilder sql = new StringBuilder("""
 				SELECT p.id AS profile_id,
 				       p.type AS profile_type,
 				       p.validation_status,
@@ -43,12 +49,29 @@ public class KycRepository {
 				       min(d.uploaded_at) FILTER (WHERE d.status = 'PENDING_REVIEW') AS oldest_pending_document_at
 				FROM profiles p
 				JOIN official_documents d ON d.profile_id = p.id
-				WHERE p.validation_status = 'PENDING'
-				  AND p.type IN ('MOTOTAXI', 'TRANSPORTER')
+				WHERE p.type IN ('MOTOTAXI', 'TRANSPORTER')
+				""");
+		if (profileType != null) {
+			sql.append("  AND p.type = ?\n");
+			params.add(profileType.name());
+		}
+		if (status != null) {
+			sql.append("  AND p.validation_status = ?\n");
+			params.add(status.name());
+		}
+		sql.append("""
 				GROUP BY p.id, p.type, p.validation_status, p.display_name
-				HAVING count(d.id) FILTER (WHERE d.status = 'PENDING_REVIEW') > 0
+				""");
+		if (status == ValidationStatus.PENDING) {
+			sql.append("HAVING count(d.id) FILTER (WHERE d.status = 'PENDING_REVIEW') > 0\n");
+		}
+		else {
+			sql.append("HAVING count(d.id) > 0\n");
+		}
+		sql.append("""
 				ORDER BY oldest_pending_document_at ASC NULLS LAST, p.updated_at ASC
-				""", this::mapQueueItem);
+				""");
+		return this.jdbcTemplate.query(sql.toString(), this::mapQueueItem, params.toArray());
 	}
 
 	public Optional<KycProfileRecord> findProfileById(UUID profileId) {

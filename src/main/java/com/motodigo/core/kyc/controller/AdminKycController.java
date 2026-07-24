@@ -9,6 +9,8 @@ import com.motodigo.core.kyc.exception.KycErrorCode;
 import com.motodigo.core.kyc.exception.KycException;
 import com.motodigo.core.kyc.service.KycService;
 import com.motodigo.core.kyc.service.KycService.AdminAccess;
+import com.motodigo.core.profile.entity.ProfileType;
+import com.motodigo.core.profile.entity.ValidationStatus;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.ContentDisposition;
@@ -23,6 +25,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -41,6 +44,14 @@ class AdminKycController {
 	@GetMapping("/pending")
 	ResponseEntity<?> listPending(@AuthenticationPrincipal Jwt jwt, HttpServletRequest request) {
 		return ResponseEntity.ok(this.kycService.listPending(adminAccess(jwt, request)));
+	}
+
+	@GetMapping("/reviews")
+	ResponseEntity<?> listReviews(@AuthenticationPrincipal Jwt jwt,
+			@RequestParam(required = false) ProfileType profileType,
+			@RequestParam(required = false) ValidationStatus status,
+			HttpServletRequest request) {
+		return ResponseEntity.ok(this.kycService.listReviews(adminAccess(jwt, request), profileType, status));
 	}
 
 	@GetMapping("/{profileId}/documents")
