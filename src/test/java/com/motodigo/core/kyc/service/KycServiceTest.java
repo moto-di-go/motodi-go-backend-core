@@ -63,6 +63,36 @@ class KycServiceTest {
 	}
 
 	@Test
+	void listReviewsRequiresReviewPermission() {
+		assertThatThrownBy(() -> this.service.listReviews(access("PROFILE_READ"), null, null))
+				.isInstanceOf(KycException.class)
+				.extracting("errorCode")
+				.isEqualTo(KycErrorCode.KYC_ACCESS_DENIED);
+
+		verify(this.kycRepository, never()).findReviewQueue(any(), any());
+	}
+
+	@Test
+	void listReviewsDefaultsToPendingAndPassesFilters() {
+		this.service.listReviews(access("KYC_REVIEW_READ"), null, null);
+		this.service.listReviews(access("KYC_REVIEW_READ"), ProfileType.TRANSPORTER, ValidationStatus.REJECTED);
+
+		verify(this.kycRepository).findReviewQueue(null, ValidationStatus.PENDING);
+		verify(this.kycRepository).findReviewQueue(ProfileType.TRANSPORTER, ValidationStatus.REJECTED);
+	}
+
+	@Test
+	void listReviewsRejectsUnsupportedProfileType() {
+		assertThatThrownBy(() -> this.service.listReviews(access("KYC_REVIEW_READ"), ProfileType.AGENCY,
+				ValidationStatus.PENDING))
+				.isInstanceOf(KycException.class)
+				.extracting("errorCode")
+				.isEqualTo(KycErrorCode.KYC_PROFILE_NOT_ELIGIBLE);
+
+		verify(this.kycRepository, never()).findReviewQueue(any(), any());
+	}
+
+	@Test
 	void rejectRequiresReason() {
 		assertThatThrownBy(() -> this.service.decide(UUID.randomUUID(),
 				new AdminKycDecisionRequest(KycDecision.REJECT, " "), access("KYC_DECIDE")))

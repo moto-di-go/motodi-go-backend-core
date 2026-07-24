@@ -12,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 @RestControllerAdvice
 public class AuthExceptionHandler {
@@ -42,6 +43,13 @@ public class AuthExceptionHandler {
 	@ExceptionHandler(ConstraintViolationException.class)
 	ResponseEntity<ErrorResponse> handleConstraintViolation(ConstraintViolationException exception, HttpServletRequest request) {
 		return error(HttpStatus.BAD_REQUEST, AuthErrorCode.VALIDATION_FAILED.name(), exception.getMessage(), request);
+	}
+
+	@ExceptionHandler(MethodArgumentTypeMismatchException.class)
+	ResponseEntity<ErrorResponse> handleTypeMismatch(MethodArgumentTypeMismatchException exception,
+			HttpServletRequest request) {
+		return error(HttpStatus.BAD_REQUEST, AuthErrorCode.VALIDATION_FAILED.name(),
+				"Parametre invalide: " + exception.getName(), request);
 	}
 
 	private ResponseEntity<ErrorResponse> error(HttpStatus status, String code, String message, HttpServletRequest request) {
