@@ -14,6 +14,7 @@ import java.util.UUID;
 
 import com.motodigo.core.kyc.dto.AdminKycDecisionRequest;
 import com.motodigo.core.kyc.entity.AccessAction;
+import com.motodigo.core.kyc.entity.DocumentDecisionRecord;
 import com.motodigo.core.kyc.entity.DocumentStatus;
 import com.motodigo.core.kyc.entity.DocumentType;
 import com.motodigo.core.kyc.entity.KycDecision;
@@ -101,6 +102,101 @@ class KycServiceTest {
 				.isEqualTo(KycErrorCode.KYC_DECISION_REASON_REQUIRED);
 
 		verify(this.kycRepository, never()).lockProfileForDecision(any());
+	}
+
+	@Test
+	void documentDecisionRequiresKycDecisionPermission() {
+		assertThatThrownBy(() -> this.service.decideDocument(UUID.randomUUID(),
+				new AdminKycDecisionRequest(KycDecision.VALIDATE, null), access("KYC_REVIEW_READ")))
+				.isInstanceOf(KycException.class)
+				.extracting("errorCode")
+				.isEqualTo(KycErrorCode.KYC_ACCESS_DENIED);
+
+		verify(this.kycRepository, never()).lockDocumentById(any());
+	}
+
+	@Test
+	void documentRejectRequiresReason() {
+		assertThatThrownBy(() -> this.service.decideDocument(UUID.randomUUID(),
+				new AdminKycDecisionRequest(KycDecision.REJECT, " "), access("KYC_DECIDE")))
+				.isInstanceOf(KycException.class)
+				.extracting("errorCode")
+				.isEqualTo(KycErrorCode.KYC_DECISION_REASON_REQUIRED);
+
+		verify(this.kycRepository, never()).lockDocumentById(any());
+	}
+
+	@Test
+	void validateDocumentAcceptsOnlyThatDocumentAndKeepsProfilePendingWhenIncomplete() {
+		UUID profileId = UUID.randomUUID();
+		UUID userId = UUID.randomUUID();
+		UUID actorId = UUID.randomUUID();
+		OfficialDocumentRecord document = document(profileId, DocumentType.CNI, DocumentStatus.PENDING_REVIEW);
+		DocumentDecisionRecord decision = documentDecision(document, actorId, KycDecision.VALIDATE, null);
+		when(this.kycRepository.lockDocumentById(document.id())).thenReturn(Optional.of(document));
+		when(this.kycRepository.lockProfileForDecision(profileId))
+				.thenReturn(Optional.of(profile(profileId, userId, ProfileType.MOTOTAXI, ValidationStatus.PENDING)));
+		when(this.kycRepository.saveDocumentDecision(document, actorId, KycDecision.VALIDATE, null))
+				.thenReturn(decision);
+		when(this.kycRepository.countAcceptedRequiredDocumentTypes(eq(profileId), any())).thenReturn(4L);
+
+		this.service.decideDocument(document.id(), new AdminKycDecisionRequest(KycDecision.VALIDATE, null),
+				new AdminAccess(actorId, "ADMIN", List.of("KYC_DECIDE"), "corr-1"));
+
+		verify(this.kycRepository).updateDocumentStatus(document.id(), DocumentStatus.ACCEPTED, null);
+		verify(this.kycRepository).saveAudit(document.id(), actorId, AccessAction.APPROVE, "ADMIN", "corr-1");
+		verify(this.kycRepository, never()).updateProfileStatus(profileId, ValidationStatus.VALIDATED);
+		verify(this.kycRepository, never()).queueKycDecisionNotification(any(), any(), any(), any());
+	}
+
+	@Test
+	void validateLastRequiredDocumentValidatesProfileAndNotifiesUser() {
+		UUID profileId = UUID.randomUUID();
+		UUID userId = UUID.randomUUID();
+		UUID actorId = UUID.randomUUID();
+		OfficialDocumentRecord document = document(profileId, DocumentType.INSURANCE, DocumentStatus.PENDING_REVIEW);
+		DocumentDecisionRecord decision = documentDecision(document, actorId, KycDecision.VALIDATE, null);
+		when(this.kycRepository.lockDocumentById(document.id())).thenReturn(Optional.of(document));
+		when(this.kycRepository.lockProfileForDecision(profileId))
+				.thenReturn(Optional.of(profile(profileId, userId, ProfileType.TRANSPORTER, ValidationStatus.PENDING)));
+		when(this.kycRepository.saveDocumentDecision(document, actorId, KycDecision.VALIDATE, null))
+				.thenReturn(decision);
+		when(this.kycRepository.countAcceptedRequiredDocumentTypes(eq(profileId), any())).thenReturn(5L);
+
+		var response = this.service.decideDocument(document.id(),
+				new AdminKycDecisionRequest(KycDecision.VALIDATE, null),
+				new AdminAccess(actorId, "ADMIN", List.of("KYC_DECIDE"), "corr-1"));
+
+		Assertions.assertThat(response.profileValidationStatus()).isEqualTo(ValidationStatus.VALIDATED);
+		verify(this.kycRepository).updateProfileStatus(profileId, ValidationStatus.VALIDATED);
+		verify(this.kycRepository).queueKycDecisionNotification(userId, KycDecision.VALIDATE, "Aline", null);
+	}
+
+	@Test
+	void rejectDocumentDeletesRowAndStorageKeepsHistoryAndNotifiesUser() {
+		UUID profileId = UUID.randomUUID();
+		UUID userId = UUID.randomUUID();
+		UUID actorId = UUID.randomUUID();
+		OfficialDocumentRecord document = document(profileId, DocumentType.PROFILE_PHOTO, DocumentStatus.PENDING_REVIEW);
+		DocumentDecisionRecord decision = documentDecision(document, actorId, KycDecision.REJECT, "Photo illisible");
+		when(this.kycRepository.lockDocumentById(document.id())).thenReturn(Optional.of(document));
+		when(this.kycRepository.lockProfileForDecision(profileId))
+				.thenReturn(Optional.of(profile(profileId, userId, ProfileType.MOTOTAXI, ValidationStatus.PENDING)));
+		when(this.kycRepository.saveDocumentDecision(document, actorId, KycDecision.REJECT, "Photo illisible"))
+				.thenReturn(decision);
+		when(this.kycRepository.countPendingDocumentsByProfile(profileId)).thenReturn(0L);
+
+		var response = this.service.decideDocument(document.id(),
+				new AdminKycDecisionRequest(KycDecision.REJECT, " Photo illisible "),
+				new AdminAccess(actorId, "ADMIN", List.of("KYC_DECIDE"), "corr-1"));
+
+		Assertions.assertThat(response.profileValidationStatus()).isEqualTo(ValidationStatus.REJECTED);
+		verify(this.kycRepository).saveDocumentDecision(document, actorId, KycDecision.REJECT, "Photo illisible");
+		verify(this.kycRepository).saveAudit(document.id(), actorId, AccessAction.REJECT, "ADMIN", "corr-1");
+		verify(this.documentStorage).delete(document.encryptedStorageKey());
+		verify(this.kycRepository).deleteDocument(document.id());
+		verify(this.kycRepository).updateProfileStatus(profileId, ValidationStatus.REJECTED);
+		verify(this.kycRepository).queueKycDecisionNotification(userId, KycDecision.REJECT, "Aline", "Photo illisible");
 	}
 
 	@Test
@@ -297,5 +393,11 @@ class KycServiceTest {
 
 	private static ValidationDecisionRecord decision(UUID profileId, UUID actorId, KycDecision decision, String reason) {
 		return new ValidationDecisionRecord(UUID.randomUUID(), profileId, actorId, decision, reason, Instant.now());
+	}
+
+	private static DocumentDecisionRecord documentDecision(OfficialDocumentRecord document, UUID actorId,
+			KycDecision decision, String reason) {
+		return new DocumentDecisionRecord(UUID.randomUUID(), document.profileId(), document.id(), document.type(),
+				document.fileName(), document.mimeType(), document.sizeBytes(), decision, reason, actorId, Instant.now());
 	}
 }

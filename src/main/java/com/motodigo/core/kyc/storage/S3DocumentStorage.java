@@ -12,6 +12,7 @@ import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
@@ -64,6 +65,20 @@ public class S3DocumentStorage implements DocumentStorage {
 		}
 		catch (NoSuchKeyException ex) {
 			throw new KycException(KycErrorCode.KYC_DOCUMENT_NOT_FOUND);
+		}
+		catch (S3Exception | IllegalArgumentException ex) {
+			throw new KycException(KycErrorCode.KYC_STORAGE_FAILED);
+		}
+	}
+
+	@Override
+	public void delete(String encryptedStorageKey) {
+		try {
+			S3Location location = location(encryptedStorageKey);
+			this.s3Client.deleteObject(DeleteObjectRequest.builder()
+					.bucket(location.bucket())
+					.key(location.key())
+					.build());
 		}
 		catch (S3Exception | IllegalArgumentException ex) {
 			throw new KycException(KycErrorCode.KYC_STORAGE_FAILED);
