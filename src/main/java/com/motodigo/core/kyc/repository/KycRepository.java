@@ -11,6 +11,7 @@ import java.util.UUID;
 
 import com.motodigo.core.kyc.dto.AdminKycQueueItemResponse;
 import com.motodigo.core.kyc.entity.AccessAction;
+import com.motodigo.core.kyc.entity.DocumentDecisionRecord;
 import com.motodigo.core.kyc.entity.DocumentStatus;
 import com.motodigo.core.kyc.entity.DocumentType;
 import com.motodigo.core.kyc.entity.KycDecision;
@@ -110,6 +111,16 @@ public class KycRepository {
 				""", this::mapDocument, documentId).stream().findFirst();
 	}
 
+	public Optional<OfficialDocumentRecord> lockDocumentById(UUID documentId) {
+		return this.jdbcTemplate.query("""
+				SELECT id, profile_id, vehicle_id, type, status, encrypted_storage_key, file_name, mime_type, size_bytes,
+				       rejection_reason, uploaded_at, updated_at
+				FROM official_documents
+				WHERE id = ?
+				FOR UPDATE
+				""", this::mapDocument, documentId).stream().findFirst();
+	}
+
 	public List<OfficialDocumentRecord> findPendingDocumentsByProfile(UUID profileId) {
 		return this.jdbcTemplate.query("""
 				SELECT id, profile_id, vehicle_id, type, status, encrypted_storage_key, file_name, mime_type, size_bytes,
@@ -129,6 +140,16 @@ public class KycRepository {
 				""", this::mapDecision, profileId);
 	}
 
+	public List<DocumentDecisionRecord> findDocumentDecisionsByProfile(UUID profileId) {
+		return this.jdbcTemplate.query("""
+				SELECT id, profile_id, document_id, document_type, file_name, mime_type, size_bytes,
+				       decision, reason, admin_profile_id, decided_at
+				FROM kyc_document_decisions
+				WHERE profile_id = ?
+				ORDER BY decided_at DESC
+				""", this::mapDocumentDecision, profileId);
+	}
+
 	public void updateProfileStatus(UUID profileId, ValidationStatus status) {
 		this.jdbcTemplate.update("""
 				UPDATE profiles
@@ -145,6 +166,50 @@ public class KycRepository {
 				    updated_at = now()
 				WHERE profile_id = ? AND status = 'PENDING_REVIEW'
 				""", status.name(), blankToNull(rejectionReason), profileId);
+	}
+
+	public void updateDocumentStatus(UUID documentId, DocumentStatus status, String rejectionReason) {
+		this.jdbcTemplate.update("""
+				UPDATE official_documents
+				SET status = ?,
+				    rejection_reason = ?,
+				    updated_at = now()
+				WHERE id = ?
+				""", status.name(), blankToNull(rejectionReason), documentId);
+	}
+
+	public void deleteDocument(UUID documentId) {
+		this.jdbcTemplate.update("""
+				DELETE FROM official_documents
+				WHERE id = ?
+				""", documentId);
+	}
+
+	public long countPendingDocumentsByProfile(UUID profileId) {
+		Long count = this.jdbcTemplate.queryForObject("""
+				SELECT count(*)
+				FROM official_documents
+				WHERE profile_id = ? AND status = 'PENDING_REVIEW'
+				""", Long.class, profileId);
+		return count == null ? 0 : count;
+	}
+
+	public long countAcceptedRequiredDocumentTypes(UUID profileId, List<DocumentType> documentTypes) {
+		if (documentTypes == null || documentTypes.isEmpty()) {
+			return 0;
+		}
+		List<Object> params = new ArrayList<>();
+		params.add(profileId);
+		String placeholders = String.join(", ", documentTypes.stream().map(type -> "?").toList());
+		documentTypes.stream().map(DocumentType::name).forEach(params::add);
+		Long count = this.jdbcTemplate.queryForObject("""
+				SELECT count(DISTINCT type)
+				FROM official_documents
+				WHERE profile_id = ?
+				  AND status = 'ACCEPTED'
+				  AND type IN (%s)
+				""".formatted(placeholders), Long.class, params.toArray());
+		return count == null ? 0 : count;
 	}
 
 	public OfficialDocumentRecord saveDocument(UUID profileId, UUID vehicleId, DocumentType type, DocumentStatus status,
@@ -166,6 +231,21 @@ public class KycRepository {
 				VALUES (?, ?, ?, ?)
 				RETURNING id, profile_id, admin_profile_id, decision, reason, decided_at
 				""", this::mapDecision, profileId, adminProfileId, decision.name(), blankToNull(reason));
+	}
+
+	public DocumentDecisionRecord saveDocumentDecision(OfficialDocumentRecord document, UUID adminProfileId,
+			KycDecision decision, String reason) {
+		return this.jdbcTemplate.queryForObject("""
+				INSERT INTO kyc_document_decisions (
+				  profile_id, document_id, document_type, file_name, mime_type, size_bytes,
+				  decision, reason, admin_profile_id
+				)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+				RETURNING id, profile_id, document_id, document_type, file_name, mime_type, size_bytes,
+				          decision, reason, admin_profile_id, decided_at
+				""", this::mapDocumentDecision, document.profileId(), document.id(), document.type().name(),
+				blankToNull(document.fileName()), document.mimeType(), document.sizeBytes(), decision.name(),
+				blankToNull(reason), adminProfileId);
 	}
 
 	public void saveAudit(UUID documentId, UUID actorProfileId, AccessAction action, String actorRole, String correlationId) {
@@ -226,6 +306,21 @@ public class KycRepository {
 				rs.getObject("admin_profile_id", UUID.class),
 				KycDecision.valueOf(rs.getString("decision")),
 				rs.getString("reason"),
+				instant(rs, "decided_at"));
+	}
+
+	private DocumentDecisionRecord mapDocumentDecision(ResultSet rs, int rowNum) throws SQLException {
+		return new DocumentDecisionRecord(
+				rs.getObject("id", UUID.class),
+				rs.getObject("profile_id", UUID.class),
+				rs.getObject("document_id", UUID.class),
+				DocumentType.valueOf(rs.getString("document_type")),
+				rs.getString("file_name"),
+				rs.getString("mime_type"),
+				rs.getLong("size_bytes"),
+				KycDecision.valueOf(rs.getString("decision")),
+				rs.getString("reason"),
+				rs.getObject("admin_profile_id", UUID.class),
 				instant(rs, "decided_at"));
 	}
 

@@ -80,6 +80,12 @@ class AdminKycController {
 		return ResponseEntity.ok(this.kycService.decide(profileId, body, adminAccess(jwt, request)));
 	}
 
+	@PostMapping("/documents/{documentId}/decision")
+	ResponseEntity<?> decideDocument(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID documentId,
+			@Valid @RequestBody AdminKycDecisionRequest body, HttpServletRequest request) {
+		return ResponseEntity.ok(this.kycService.decideDocument(documentId, body, adminAccess(jwt, request)));
+	}
+
 	private static AdminAccess adminAccess(Jwt jwt, HttpServletRequest request) {
 		return new AdminAccess(activeProfileId(jwt), jwt.getClaimAsString("activeProfileType"),
 				permissions(jwt), request.getHeader(CORRELATION_ID_HEADER));

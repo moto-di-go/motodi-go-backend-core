@@ -9,6 +9,11 @@ public class KycException extends RuntimeException {
 		this.errorCode = errorCode;
 	}
 
+	public KycException(KycErrorCode errorCode, Throwable cause) {
+		super(errorCode.message(), cause);
+		this.errorCode = errorCode;
+	}
+
 	public KycErrorCode errorCode() {
 		return this.errorCode;
 	}

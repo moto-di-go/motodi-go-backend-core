@@ -273,6 +273,11 @@ class KycFlowIT {
 			return this.values.get(encryptedStorageKey);
 		}
 
+		@Override
+		public void delete(String encryptedStorageKey) {
+			this.values.remove(encryptedStorageKey);
+		}
+
 		void clear() {
 			this.values.clear();
 		}

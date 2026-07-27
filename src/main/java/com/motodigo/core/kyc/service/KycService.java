@@ -13,9 +13,11 @@ import java.util.UUID;
 
 import com.motodigo.core.kyc.dto.AdminKycDecisionRequest;
 import com.motodigo.core.kyc.dto.AdminKycDecisionResponse;
+import com.motodigo.core.kyc.dto.AdminKycDocumentDecisionResponse;
 import com.motodigo.core.kyc.dto.AdminKycDocumentResponse;
 import com.motodigo.core.kyc.dto.AdminKycQueueItemResponse;
 import com.motodigo.core.kyc.dto.DocumentRequirementResponse;
+import com.motodigo.core.kyc.dto.DocumentDecisionResponse;
 import com.motodigo.core.kyc.dto.DownloadedKycDocument;
 import com.motodigo.core.kyc.dto.KycDocumentsResponse;
 import com.motodigo.core.kyc.dto.OfficialDocumentResponse;
@@ -134,7 +136,10 @@ public class KycService {
 				documents.stream().map(OfficialDocumentResponse::from).toList(),
 				this.kycRepository.findDecisionsByProfile(profileId).stream()
 						.map(ValidationDecisionResponse::from)
-				.toList());
+				.toList(),
+				this.kycRepository.findDocumentDecisionsByProfile(profileId).stream()
+						.map(DocumentDecisionResponse::from)
+						.toList());
 	}
 
 	@Transactional
@@ -190,6 +195,57 @@ public class KycService {
 
 		return new AdminKycDecisionResponse(profileId, profileStatus, request.decision(),
 				ValidationDecisionResponse.from(decisionRecord));
+	}
+
+	@Transactional
+	public AdminKycDocumentDecisionResponse decideDocument(UUID documentId, AdminKycDecisionRequest request,
+			AdminAccess adminAccess) {
+		requireAdminDecision(adminAccess);
+		if (request.decision() == KycDecision.REJECT && isBlank(request.reason())) {
+			throw new KycException(KycErrorCode.KYC_DECISION_REASON_REQUIRED);
+		}
+
+		OfficialDocumentRecord document = this.kycRepository.lockDocumentById(documentId)
+				.orElseThrow(() -> new KycException(KycErrorCode.KYC_DOCUMENT_NOT_FOUND));
+		KycProfileRecord profile = this.kycRepository.lockProfileForDecision(document.profileId())
+				.orElseThrow(() -> new KycException(KycErrorCode.KYC_PROFILE_NOT_ELIGIBLE));
+		requireEligibleProfile(profile.type());
+		if (profile.validationStatus() != ValidationStatus.PENDING
+				|| document.status() != DocumentStatus.PENDING_REVIEW) {
+			throw new KycException(KycErrorCode.KYC_DECISION_NOT_ALLOWED);
+		}
+
+		String reason = blankToNull(request.reason());
+		var decisionRecord = this.kycRepository.saveDocumentDecision(document, adminAccess.actorProfileId(),
+				request.decision(), request.decision() == KycDecision.REJECT ? reason : null);
+		ValidationStatus profileStatus = profile.validationStatus();
+
+		if (request.decision() == KycDecision.VALIDATE) {
+			this.kycRepository.updateDocumentStatus(document.id(), DocumentStatus.ACCEPTED, null);
+			this.kycRepository.saveAudit(document.id(), adminAccess.actorProfileId(), AccessAction.APPROVE,
+					adminAccess.actorRole(), adminAccess.correlationId());
+			if (allRequiredDocumentsAccepted(profile.id(), profile.type())) {
+				profileStatus = ValidationStatus.VALIDATED;
+				this.kycRepository.updateProfileStatus(profile.id(), profileStatus);
+				this.kycRepository.queueKycDecisionNotification(profile.userId(), KycDecision.VALIDATE,
+						profile.displayName(), null);
+			}
+		}
+		else {
+			this.kycRepository.saveAudit(document.id(), adminAccess.actorProfileId(), AccessAction.REJECT,
+					adminAccess.actorRole(), adminAccess.correlationId());
+			this.documentStorage.delete(document.encryptedStorageKey());
+			this.kycRepository.deleteDocument(document.id());
+			profileStatus = this.kycRepository.countPendingDocumentsByProfile(profile.id()) > 0
+					? ValidationStatus.PENDING
+					: ValidationStatus.REJECTED;
+			this.kycRepository.updateProfileStatus(profile.id(), profileStatus);
+			this.kycRepository.queueKycDecisionNotification(profile.userId(), KycDecision.REJECT,
+					profile.displayName(), reason);
+		}
+
+		return new AdminKycDocumentDecisionResponse(profile.id(), document.id(), profileStatus, request.decision(),
+				DocumentDecisionResponse.from(decisionRecord));
 	}
 
 	private static void requireEligibleProfile(ProfileType profileType) {
@@ -263,6 +319,11 @@ public class KycService {
 
 	private static boolean isComplete(List<DocumentRequirementResponse> requirements) {
 		return requirements.stream().allMatch(DocumentRequirementResponse::uploaded);
+	}
+
+	private boolean allRequiredDocumentsAccepted(UUID profileId, ProfileType profileType) {
+		List<DocumentType> requiredTypes = requiredDocumentTypes(profileType);
+		return this.kycRepository.countAcceptedRequiredDocumentTypes(profileId, requiredTypes) == requiredTypes.size();
 	}
 
 	private static byte[] content(MultipartFile file) {
