@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
+import com.motodigo.core.wallet.WalletProvisioningRepository;
 import com.motodigo.core.wallet.dto.LedgerEntryResponse;
 import com.motodigo.core.wallet.dto.LedgerPageResponse;
 import com.motodigo.core.wallet.dto.WalletResponse;
@@ -27,23 +28,30 @@ import org.springframework.transaction.annotation.Transactional;
  * integrity under concurrency. There is intentionally no public write endpoint: deposits and ride
  * payments are orchestrated by the payment layer (CORE-PAY-001 / CORE-PAY-002), which calls this
  * primitive.
+ *
+ * <p>Wallets are scoped to the user account ({@code user_id}), never to the active profile. Missing
+ * wallets for already-active accounts are provisioned lazily via
+ * {@link WalletProvisioningRepository#createActiveWalletIfMissing}.
  */
 @Service
 @ConditionalOnProperty(prefix = "spring.datasource", name = "url")
 public class WalletService {
 
 	private final WalletRepository walletRepository;
+	private final WalletProvisioningRepository walletProvisioningRepository;
 
-	public WalletService(WalletRepository walletRepository) {
+	public WalletService(WalletRepository walletRepository,
+			WalletProvisioningRepository walletProvisioningRepository) {
 		this.walletRepository = walletRepository;
+		this.walletProvisioningRepository = walletProvisioningRepository;
 	}
 
-	@Transactional(readOnly = true)
+	@Transactional
 	public WalletResponse getWallet(UUID userId) {
 		return WalletResponse.from(requireWalletByUser(userId));
 	}
 
-	@Transactional(readOnly = true)
+	@Transactional
 	public LedgerPageResponse getLedger(UUID userId, int page, int size) {
 		WalletRecord wallet = requireWalletByUser(userId);
 		// Fetch one extra row to determine whether a further page exists.
@@ -124,6 +132,7 @@ public class WalletService {
 	}
 
 	private WalletRecord requireWalletByUser(UUID userId) {
+		this.walletProvisioningRepository.createActiveWalletIfMissing(userId);
 		return this.walletRepository.findByUserId(userId)
 				.orElseThrow(() -> new WalletException(WalletErrorCode.WALLET_NOT_FOUND));
 	}

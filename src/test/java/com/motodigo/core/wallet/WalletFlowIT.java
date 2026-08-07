@@ -1,6 +1,7 @@
 package com.motodigo.core.wallet;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -17,7 +18,6 @@ import java.util.regex.Pattern;
 
 import com.motodigo.core.auth.dto.AuthTokenResponse;
 import com.motodigo.core.auth.service.OtpSender;
-import com.motodigo.core.wallet.entity.LedgerEntryType;
 import com.motodigo.core.wallet.exception.WalletErrorCode;
 import com.motodigo.core.wallet.exception.WalletException;
 import com.motodigo.core.wallet.service.WalletService;
@@ -39,6 +39,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -71,6 +73,12 @@ class WalletFlowIT {
 
 	@Autowired
 	private WalletService walletService;
+
+	@Autowired
+	private WalletProvisioningRepository walletProvisioningRepository;
+
+	@Autowired
+	private PlatformTransactionManager transactionManager;
 
 	@DynamicPropertySource
 	static void datasourceProperties(DynamicPropertyRegistry registry) {
@@ -178,6 +186,76 @@ class WalletFlowIT {
 				FROM ledger_entries WHERE wallet_id = ?
 				""", BigDecimal.class, walletId);
 		assertThat(currentBalance(walletId)).isEqualByComparingTo(derived);
+	}
+
+	@Test
+	void existingActiveAccountWithoutWalletIsProvisionedOnLoginAndGet() {
+		String phoneNumber = "+237699100104";
+		registerVerifyAndLogin(phoneNumber, "Secret1234");
+		UUID userId = userIdFor(phoneNumber);
+
+		// Simulate a legacy ACTIVE account created before wallet provisioning existed.
+		this.jdbcTemplate.update("DELETE FROM wallets WHERE user_id = ?", userId);
+		assertThat(this.jdbcTemplate.queryForObject("SELECT count(*) FROM wallets WHERE user_id = ?", Integer.class, userId))
+				.isZero();
+
+		var login = this.restTemplate.postForEntity(url("/api/v1/auth/login"), Map.of(
+				"phoneNumber", phoneNumber.substring(4),
+				"password", "Secret1234",
+				"deviceId", "wallet-it-legacy"), AuthTokenResponse.class);
+		assertThat(login.getStatusCode()).isEqualTo(HttpStatus.OK);
+		assertThat(login.getBody()).isNotNull();
+		assertThat(this.jdbcTemplate.queryForObject("SELECT count(*) FROM wallets WHERE user_id = ?", Integer.class, userId))
+				.isEqualTo(1);
+
+		this.jdbcTemplate.update("DELETE FROM wallets WHERE user_id = ?", userId);
+		var wallet = exchange(login.getBody().accessToken(), HttpMethod.GET, "/api/v1/wallet", null, Map.class);
+		assertThat(wallet.getStatusCode()).isEqualTo(HttpStatus.OK);
+		assertThat(wallet.getBody()).isNotNull();
+		assertThat(wallet.getBody().get("currency")).isEqualTo("XAF");
+		assertThat(wallet.getBody().get("status")).isEqualTo("ACTIVE");
+		assertThat(new BigDecimal(String.valueOf(wallet.getBody().get("currentBalance")))).isEqualByComparingTo("0");
+		assertThat(this.jdbcTemplate.queryForObject("SELECT count(*) FROM wallets WHERE user_id = ?", Integer.class, userId))
+				.isEqualTo(1);
+	}
+
+	@Test
+	void ensureWalletIsIdempotentAndUniquePerAccount() {
+		registerVerifyAndLogin("+237699100105", "Secret1234");
+		UUID userId = userIdFor("+237699100105");
+
+		this.walletProvisioningRepository.createActiveWalletIfMissing(userId);
+		this.walletProvisioningRepository.createActiveWalletIfMissing(userId);
+
+		assertThat(this.jdbcTemplate.queryForObject("SELECT count(*) FROM wallets WHERE user_id = ?", Integer.class, userId))
+				.isEqualTo(1);
+
+		// Wallet is account-scoped: additional profiles must not create additional wallets.
+		this.jdbcTemplate.update("""
+				INSERT INTO profiles (user_id, type, display_name, validation_status, active)
+				VALUES (?, 'PASSENGER', 'Passager', 'VALIDATED', true),
+				       (?, 'MOTOTAXI', 'Conducteur', 'VALIDATED', false)
+				""", userId, userId);
+		assertThat(this.jdbcTemplate.queryForObject("SELECT count(*) FROM wallets WHERE user_id = ?", Integer.class, userId))
+				.isEqualTo(1);
+		assertThat(this.jdbcTemplate.queryForObject("SELECT count(*) FROM profiles WHERE user_id = ?", Integer.class, userId))
+				.isEqualTo(2);
+	}
+
+	@Test
+	void transactionalRollbackUndoesLedgerAndBalance() {
+		registerVerifyAndLogin("+237699100106", "Secret1234");
+		UUID walletId = walletIdFor("+237699100106");
+		this.walletService.credit(walletId, new BigDecimal("1000.00"), "seed", "rb-seed", null);
+
+		TransactionTemplate tx = new TransactionTemplate(this.transactionManager);
+		assertThatThrownBy(() -> tx.executeWithoutResult(status -> {
+			this.walletService.credit(walletId, new BigDecimal("500.00"), "will-rollback", "rb-1", null);
+			throw new IllegalStateException("force rollback");
+		})).isInstanceOf(IllegalStateException.class);
+
+		assertThat(ledgerCount(walletId)).isEqualTo(1);
+		assertThat(currentBalance(walletId)).isEqualByComparingTo("1000.00");
 	}
 
 	private String registerVerifyAndLogin(String phoneNumber, String password) {

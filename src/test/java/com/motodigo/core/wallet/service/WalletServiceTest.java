@@ -13,6 +13,7 @@ import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
+import com.motodigo.core.wallet.WalletProvisioningRepository;
 import com.motodigo.core.wallet.entity.LedgerEntryRecord;
 import com.motodigo.core.wallet.entity.LedgerEntryType;
 import com.motodigo.core.wallet.entity.WalletRecord;
@@ -36,13 +37,16 @@ class WalletServiceTest {
 	@Mock
 	private WalletRepository walletRepository;
 
+	@Mock
+	private WalletProvisioningRepository walletProvisioningRepository;
+
 	private WalletService walletService;
 
 	private final UUID walletId = UUID.randomUUID();
 
 	@BeforeEach
 	void setUp() {
-		this.walletService = new WalletService(this.walletRepository);
+		this.walletService = new WalletService(this.walletRepository, this.walletProvisioningRepository);
 	}
 
 	@Test
@@ -134,7 +138,21 @@ class WalletServiceTest {
 	}
 
 	@Test
-	void getWalletThrowsWhenMissing() {
+	void getWalletEnsuresProvisioningThenReturnsWallet() {
+		UUID userId = UUID.randomUUID();
+		WalletRecord wallet = new WalletRecord(this.walletId, userId, "XAF", BigDecimal.ZERO, WalletStatus.ACTIVE,
+				Instant.now(), Instant.now());
+		when(this.walletRepository.findByUserId(userId)).thenReturn(Optional.of(wallet));
+
+		var response = this.walletService.getWallet(userId);
+
+		verify(this.walletProvisioningRepository).createActiveWalletIfMissing(userId);
+		assertThat(response.id()).isEqualTo(this.walletId);
+		assertThat(response.currency()).isEqualTo("XAF");
+	}
+
+	@Test
+	void getWalletThrowsWhenStillMissingAfterEnsure() {
 		UUID userId = UUID.randomUUID();
 		when(this.walletRepository.findByUserId(userId)).thenReturn(Optional.empty());
 
@@ -142,6 +160,8 @@ class WalletServiceTest {
 				.isInstanceOf(WalletException.class)
 				.extracting(ex -> ((WalletException) ex).errorCode())
 				.isEqualTo(WalletErrorCode.WALLET_NOT_FOUND);
+
+		verify(this.walletProvisioningRepository).createActiveWalletIfMissing(userId);
 	}
 
 	private void lockedWallet(BigDecimal balance, WalletStatus status) {
