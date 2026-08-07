@@ -5,6 +5,7 @@ import java.util.stream.Collectors;
 
 import com.motodigo.core.auth.dto.ErrorResponse;
 import com.motodigo.core.kyc.exception.KycException;
+import com.motodigo.core.wallet.exception.WalletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import org.springframework.context.MessageSource;
@@ -37,6 +38,11 @@ public class AuthExceptionHandler {
 
 	@ExceptionHandler(KycException.class)
 	ResponseEntity<ErrorResponse> handleKycException(KycException exception, HttpServletRequest request) {
+		return error(exception.errorCode().status(), exception.errorCode().name(), exception.getMessage(), request);
+	}
+
+	@ExceptionHandler(WalletException.class)
+	ResponseEntity<ErrorResponse> handleWalletException(WalletException exception, HttpServletRequest request) {
 		return error(exception.errorCode().status(), exception.errorCode().name(), exception.getMessage(), request);
 	}
 
