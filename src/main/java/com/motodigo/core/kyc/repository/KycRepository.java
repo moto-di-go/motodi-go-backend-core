@@ -150,6 +150,49 @@ public class KycRepository {
 				""", this::mapDocumentDecision, profileId);
 	}
 
+	public void updateTransporterVehicleId(UUID profileId, UUID vehicleId) {
+		this.jdbcTemplate.update("""
+				UPDATE transporter_profiles
+				SET vehicle_id = ?
+				WHERE profile_id = ?
+				""", vehicleId, profileId);
+	}
+
+	public UUID findTransporterVehicleId(UUID profileId) {
+		List<UUID> ids = this.jdbcTemplate.query("""
+				SELECT vehicle_id
+				FROM transporter_profiles
+				WHERE profile_id = ? AND vehicle_id IS NOT NULL
+				""", (rs, rowNum) -> rs.getObject("vehicle_id", UUID.class), profileId);
+		return ids.isEmpty() ? null : ids.getFirst();
+	}
+
+	public UUID createVehicleForProfile(UUID ownerProfileId, String type, int capacity, String validationStatus) {
+		return this.jdbcTemplate.queryForObject("""
+				INSERT INTO vehicles (owner_profile_id, type, capacity, validation_status, active)
+				VALUES (?, ?, ?, ?, true)
+				RETURNING id
+				""", UUID.class, ownerProfileId, type, capacity, validationStatus);
+	}
+
+	public void updateVehicleValidationStatus(UUID vehicleId, String validationStatus) {
+		this.jdbcTemplate.update("""
+				UPDATE vehicles
+				SET validation_status = ?, updated_at = now()
+				WHERE id = ?
+				""", validationStatus, vehicleId);
+	}
+
+	public boolean isVehicleOwnedByProfile(UUID vehicleId, UUID profileId) {
+		Boolean exists = this.jdbcTemplate.queryForObject("""
+				SELECT EXISTS (
+				  SELECT 1 FROM vehicles
+				  WHERE id = ? AND owner_profile_id = ? AND active = true
+				)
+				""", Boolean.class, vehicleId, profileId);
+		return Boolean.TRUE.equals(exists);
+	}
+
 	public void updateProfileStatus(UUID profileId, ValidationStatus status) {
 		this.jdbcTemplate.update("""
 				UPDATE profiles

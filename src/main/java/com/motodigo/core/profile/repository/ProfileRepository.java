@@ -35,6 +35,7 @@ public class ProfileRepository {
 			       mt.operating_zone,
 			       tp.permit_number,
 			       tp.company_name AS transporter_company_name,
+			       tp.vehicle_id AS transporter_vehicle_id,
 			       ap.legal_name,
 			       ap.trade_register_number,
 			       ap.billing_plan,
@@ -253,7 +254,8 @@ public class ProfileRepository {
 						rs.getString("operating_zone")) : null,
 				type == ProfileType.TRANSPORTER ? new ProfileRecord.TransporterDetails(
 						rs.getString("permit_number"),
-						rs.getString("transporter_company_name")) : null,
+						rs.getString("transporter_company_name"),
+						rs.getObject("transporter_vehicle_id", UUID.class)) : null,
 				type == ProfileType.AGENCY ? new ProfileRecord.AgencyDetails(
 						rs.getString("legal_name"),
 						rs.getString("trade_register_number"),
