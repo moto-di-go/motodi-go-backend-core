@@ -19,11 +19,11 @@ import com.motodigo.core.booking.exception.BookingErrorCode;
 import com.motodigo.core.booking.exception.BookingException;
 import com.motodigo.core.booking.notify.BookingNotifier;
 import com.motodigo.core.booking.notify.BookingNotifier.NotificationType;
+import com.motodigo.core.booking.repository.AnnouncementSeatInventory;
 import com.motodigo.core.booking.repository.BookingRepository;
 import com.motodigo.core.booking.repository.SeatLockRepository;
 import com.motodigo.core.intercity.entity.AnnouncementStatus;
 import com.motodigo.core.intercity.entity.IntercityAnnouncementRecord;
-import com.motodigo.core.intercity.repository.IntercityAnnouncementRepository;
 import com.motodigo.core.profile.entity.ProfileRecord;
 import com.motodigo.core.profile.entity.ProfileType;
 import com.motodigo.core.profile.repository.ProfileRepository;
@@ -44,7 +44,7 @@ public class BookingService {
 
 	private final BookingRepository bookingRepository;
 	private final SeatLockRepository seatLockRepository;
-	private final IntercityAnnouncementRepository announcementRepository;
+	private final AnnouncementSeatInventory announcementSeatInventory;
 	private final ProfileRepository profileRepository;
 	private final BookingNotifier bookingNotifier;
 	private final BookingProperties bookingProperties;
@@ -52,18 +52,18 @@ public class BookingService {
 
 	@Autowired
 	public BookingService(BookingRepository bookingRepository, SeatLockRepository seatLockRepository,
-			IntercityAnnouncementRepository announcementRepository, ProfileRepository profileRepository,
+			AnnouncementSeatInventory announcementSeatInventory, ProfileRepository profileRepository,
 			BookingNotifier bookingNotifier, BookingProperties bookingProperties) {
-		this(bookingRepository, seatLockRepository, announcementRepository, profileRepository, bookingNotifier,
+		this(bookingRepository, seatLockRepository, announcementSeatInventory, profileRepository, bookingNotifier,
 				bookingProperties, Clock.system(APP_ZONE));
 	}
 
 	BookingService(BookingRepository bookingRepository, SeatLockRepository seatLockRepository,
-			IntercityAnnouncementRepository announcementRepository, ProfileRepository profileRepository,
+			AnnouncementSeatInventory announcementSeatInventory, ProfileRepository profileRepository,
 			BookingNotifier bookingNotifier, BookingProperties bookingProperties, Clock clock) {
 		this.bookingRepository = bookingRepository;
 		this.seatLockRepository = seatLockRepository;
-		this.announcementRepository = announcementRepository;
+		this.announcementSeatInventory = announcementSeatInventory;
 		this.profileRepository = profileRepository;
 		this.bookingNotifier = bookingNotifier;
 		this.bookingProperties = bookingProperties;
@@ -74,7 +74,7 @@ public class BookingService {
 	public BookingResponse requestBooking(UUID userId, UUID activeProfileId, UUID announcementId,
 			CreateBookingRequest request) {
 		ProfileRecord passenger = requirePassengerProfile(userId, activeProfileId);
-		IntercityAnnouncementRecord announcement = this.announcementRepository.findById(announcementId)
+		IntercityAnnouncementRecord announcement = this.announcementSeatInventory.findById(announcementId)
 				.orElseThrow(() -> new BookingException(BookingErrorCode.BOOKING_NOT_AVAILABLE,
 						"Annonce introuvable."));
 		assertAnnouncementBookable(announcement, request.seatsRequested());
@@ -103,7 +103,7 @@ public class BookingService {
 		BookingRecord booking = this.bookingRepository.lockByIdForUpdate(bookingId)
 				.orElseThrow(() -> new BookingException(BookingErrorCode.BOOKING_NOT_FOUND));
 
-		IntercityAnnouncementRecord announcement = this.announcementRepository.findById(booking.announcementId())
+		IntercityAnnouncementRecord announcement = this.announcementSeatInventory.findById(booking.announcementId())
 				.orElseThrow(() -> new BookingException(BookingErrorCode.BOOKING_NOT_FOUND));
 		if (!announcement.publisherProfileId().equals(publisher.id())) {
 			throw new BookingException(BookingErrorCode.BOOKING_FORBIDDEN);
@@ -128,7 +128,7 @@ public class BookingService {
 	 * Transactional seat lock: pessimistic lock on announcement, insert SeatLock, decrement seats.
 	 */
 	SeatLockRecord lockSeat(UUID announcementId, BookingRecord booking, Instant now) {
-		IntercityAnnouncementRecord locked = this.announcementRepository.lockByIdForUpdate(announcementId)
+		IntercityAnnouncementRecord locked = this.announcementSeatInventory.lockByIdForUpdate(announcementId)
 				.orElseThrow(() -> new BookingException(BookingErrorCode.NO_SEAT_AVAILABLE));
 
 		if (locked.status() != AnnouncementStatus.PUBLISHED
@@ -141,7 +141,7 @@ public class BookingService {
 				booking.seatsRequested(), lockExpiresAt);
 
 		try {
-			this.announcementRepository.decrementRemainingSeats(announcementId, booking.seatsRequested());
+			this.announcementSeatInventory.decrementRemainingSeats(announcementId, booking.seatsRequested());
 		}
 		catch (EmptyResultDataAccessException ex) {
 			throw new BookingException(BookingErrorCode.NO_SEAT_AVAILABLE);
@@ -156,7 +156,7 @@ public class BookingService {
 		BookingRecord booking = this.bookingRepository.lockByIdForUpdate(bookingId)
 				.orElseThrow(() -> new BookingException(BookingErrorCode.BOOKING_NOT_FOUND));
 
-		IntercityAnnouncementRecord announcement = this.announcementRepository.findById(booking.announcementId())
+		IntercityAnnouncementRecord announcement = this.announcementSeatInventory.findById(booking.announcementId())
 				.orElseThrow(() -> new BookingException(BookingErrorCode.BOOKING_NOT_FOUND));
 
 		boolean isPassenger = booking.passengerProfileId().equals(actor.id());
@@ -182,7 +182,7 @@ public class BookingService {
 		ProfileRecord actor = requireActiveProfile(userId, activeProfileId);
 		BookingRecord booking = this.bookingRepository.findById(bookingId)
 				.orElseThrow(() -> new BookingException(BookingErrorCode.BOOKING_NOT_FOUND));
-		IntercityAnnouncementRecord announcement = this.announcementRepository.findById(booking.announcementId())
+		IntercityAnnouncementRecord announcement = this.announcementSeatInventory.findById(booking.announcementId())
 				.orElseThrow(() -> new BookingException(BookingErrorCode.BOOKING_NOT_FOUND));
 
 		boolean allowed = booking.passengerProfileId().equals(actor.id())
@@ -207,7 +207,7 @@ public class BookingService {
 	public BookingPageResponse listForAnnouncement(UUID userId, UUID activeProfileId, UUID announcementId, int page,
 			int size) {
 		ProfileRecord publisher = requirePublisherProfile(userId, activeProfileId);
-		IntercityAnnouncementRecord announcement = this.announcementRepository.findById(announcementId)
+		IntercityAnnouncementRecord announcement = this.announcementSeatInventory.findById(announcementId)
 				.orElseThrow(() -> new BookingException(BookingErrorCode.BOOKING_NOT_FOUND));
 		if (!announcement.publisherProfileId().equals(publisher.id())) {
 			throw new BookingException(BookingErrorCode.BOOKING_FORBIDDEN);
@@ -247,7 +247,7 @@ public class BookingService {
 	private void releaseSeatLockIfPresent(UUID bookingId) {
 		this.seatLockRepository.lockByBookingIdForUpdate(bookingId).ifPresent(lock -> {
 			if (!lock.consumed()) {
-				this.announcementRepository.incrementRemainingSeats(lock.announcementId(), lock.seatsLocked());
+				this.announcementSeatInventory.incrementRemainingSeats(lock.announcementId(), lock.seatsLocked());
 				this.seatLockRepository.markConsumed(lock.id());
 			}
 		});

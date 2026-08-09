@@ -265,7 +265,7 @@ public class IntercityAnnouncementRepository {
 		sql.append(" ORDER BY a.departure_date ASC, a.departure_time ASC");
 	}
 
-	private IntercityAnnouncementRecord mapAnnouncement(ResultSet rs, int rowNum) throws SQLException {
+	private IntercityAnnouncementRecord mapAnnouncement(ResultSet rs, int ignoredRowNum) throws SQLException {
 		return new IntercityAnnouncementRecord(
 				rs.getObject("id", UUID.class),
 				rs.getObject("publisher_profile_id", UUID.class),

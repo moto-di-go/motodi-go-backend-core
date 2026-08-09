@@ -30,11 +30,11 @@ import com.motodigo.core.booking.exception.BookingErrorCode;
 import com.motodigo.core.booking.exception.BookingException;
 import com.motodigo.core.booking.notify.BookingNotifier;
 import com.motodigo.core.booking.notify.BookingNotifier.NotificationType;
+import com.motodigo.core.booking.repository.AnnouncementSeatInventory;
 import com.motodigo.core.booking.repository.BookingRepository;
 import com.motodigo.core.booking.repository.SeatLockRepository;
 import com.motodigo.core.intercity.entity.AnnouncementStatus;
 import com.motodigo.core.intercity.entity.IntercityAnnouncementRecord;
-import com.motodigo.core.intercity.repository.IntercityAnnouncementRepository;
 import com.motodigo.core.profile.entity.ProfileRecord;
 import com.motodigo.core.profile.entity.ProfileType;
 import com.motodigo.core.profile.entity.ValidationStatus;
@@ -56,7 +56,7 @@ class BookingServiceTest {
 	@Mock
 	private SeatLockRepository seatLockRepository;
 	@Mock
-	private IntercityAnnouncementRepository announcementRepository;
+	private AnnouncementSeatInventory announcementSeatInventory;
 	@Mock
 	private ProfileRepository profileRepository;
 	@Mock
@@ -76,7 +76,7 @@ class BookingServiceTest {
 				"0 * * * * *");
 		Clock clock = Clock.fixed(FIXED_NOW, ZONE);
 		this.service = new BookingService(this.bookingRepository, this.seatLockRepository,
-				this.announcementRepository, this.profileRepository, this.bookingNotifier, properties, clock);
+				this.announcementSeatInventory, this.profileRepository, this.bookingNotifier, properties, clock);
 		this.passengerUserId = UUID.randomUUID();
 		this.passengerProfileId = UUID.randomUUID();
 		this.transporterUserId = UUID.randomUUID();
@@ -88,7 +88,7 @@ class BookingServiceTest {
 	@Test
 	void requestBookingRejectedWhenAnnouncementFull() {
 		stubPassenger();
-		when(this.announcementRepository.findById(this.announcementId))
+		when(this.announcementSeatInventory.findById(this.announcementId))
 				.thenReturn(Optional.of(announcement(AnnouncementStatus.PUBLISHED, 4, 0)));
 
 		assertThatThrownBy(() -> this.service.requestBooking(this.passengerUserId, this.passengerProfileId,
@@ -101,20 +101,20 @@ class BookingServiceTest {
 	@Test
 	void requestBookingCreatesPendingAndNotifies() {
 		stubPassenger();
-		when(this.announcementRepository.findById(this.announcementId))
+		when(this.announcementSeatInventory.findById(this.announcementId))
 				.thenReturn(Optional.of(announcement(AnnouncementStatus.PUBLISHED, 4, 4)));
 		when(this.bookingRepository.existsActiveForPassengerAndAnnouncement(this.announcementId, this.passengerProfileId))
 				.thenReturn(false);
 		BookingRecord created = pendingBooking();
-		when(this.bookingRepository.insert(eq(this.announcementId), eq(this.passengerProfileId), eq(1), any()))
-				.thenReturn(created);
+		when(this.bookingRepository.insert(eq(this.announcementId), eq(this.passengerProfileId), eq(1),
+				any(Instant.class))).thenReturn(created);
 
 		var response = this.service.requestBooking(this.passengerUserId, this.passengerProfileId, this.announcementId,
 				new CreateBookingRequest(1));
 
 		assertThat(response.status()).isEqualTo("PENDING");
 		verify(this.bookingNotifier).notifyBooking(created, this.transporterProfileId, NotificationType.SUBSCRIPTION);
-		verify(this.seatLockRepository, never()).insert(any(), any(), anyInt(), any());
+		verify(this.seatLockRepository, never()).insert(any(UUID.class), any(UUID.class), anyInt(), any(Instant.class));
 	}
 
 	@Test
@@ -122,23 +122,25 @@ class BookingServiceTest {
 		stubTransporter();
 		BookingRecord pending = pendingBooking();
 		when(this.bookingRepository.lockByIdForUpdate(this.bookingId)).thenReturn(Optional.of(pending));
-		when(this.announcementRepository.findById(this.announcementId))
+		when(this.announcementSeatInventory.findById(this.announcementId))
 				.thenReturn(Optional.of(announcement(AnnouncementStatus.PUBLISHED, 4, 4)));
-		when(this.announcementRepository.lockByIdForUpdate(this.announcementId))
+		when(this.announcementSeatInventory.lockByIdForUpdate(this.announcementId))
 				.thenReturn(Optional.of(announcement(AnnouncementStatus.PUBLISHED, 4, 4)));
 		SeatLockRecord lock = new SeatLockRecord(UUID.randomUUID(), this.announcementId, this.bookingId, 1,
 				FIXED_NOW, FIXED_NOW.plus(Duration.ofMinutes(10)), false);
-		when(this.seatLockRepository.insert(eq(this.announcementId), eq(this.bookingId), eq(1), any())).thenReturn(lock);
-		when(this.announcementRepository.decrementRemainingSeats(this.announcementId, 1))
+		when(this.seatLockRepository.insert(eq(this.announcementId), eq(this.bookingId), eq(1), any(Instant.class)))
+				.thenReturn(lock);
+		when(this.announcementSeatInventory.decrementRemainingSeats(this.announcementId, 1))
 				.thenReturn(announcement(AnnouncementStatus.PUBLISHED, 4, 3));
 		BookingRecord confirmed = new BookingRecord(this.bookingId, this.announcementId, this.passengerProfileId, null,
 				BookingStatus.PENDING_PAYMENT, 1, FIXED_NOW, FIXED_NOW, null, lock.expiresAt(), null);
-		when(this.bookingRepository.markPendingPayment(eq(this.bookingId), eq(FIXED_NOW), any())).thenReturn(confirmed);
+		when(this.bookingRepository.markPendingPayment(eq(this.bookingId), eq(FIXED_NOW), any(Instant.class)))
+				.thenReturn(confirmed);
 
 		var response = this.service.confirmBooking(this.transporterUserId, this.transporterProfileId, this.bookingId);
 
 		assertThat(response.status()).isEqualTo("PENDING_PAYMENT");
-		verify(this.announcementRepository).decrementRemainingSeats(this.announcementId, 1);
+		verify(this.announcementSeatInventory).decrementRemainingSeats(this.announcementId, 1);
 		verify(this.bookingNotifier).notifyBooking(confirmed, this.passengerProfileId, NotificationType.CONFIRMATION);
 	}
 
@@ -146,9 +148,9 @@ class BookingServiceTest {
 	void confirmBookingFailsWhenNoSeatsLeft() {
 		stubTransporter();
 		when(this.bookingRepository.lockByIdForUpdate(this.bookingId)).thenReturn(Optional.of(pendingBooking()));
-		when(this.announcementRepository.findById(this.announcementId))
+		when(this.announcementSeatInventory.findById(this.announcementId))
 				.thenReturn(Optional.of(announcement(AnnouncementStatus.PUBLISHED, 4, 0)));
-		when(this.announcementRepository.lockByIdForUpdate(this.announcementId))
+		when(this.announcementSeatInventory.lockByIdForUpdate(this.announcementId))
 				.thenReturn(Optional.of(announcement(AnnouncementStatus.PUBLISHED, 4, 0)));
 
 		assertThatThrownBy(() -> this.service.confirmBooking(this.transporterUserId, this.transporterProfileId,
@@ -162,7 +164,7 @@ class BookingServiceTest {
 	void passengerCanCancelPendingWithoutSeatRelease() {
 		stubPassenger();
 		when(this.bookingRepository.lockByIdForUpdate(this.bookingId)).thenReturn(Optional.of(pendingBooking()));
-		when(this.announcementRepository.findById(this.announcementId))
+		when(this.announcementSeatInventory.findById(this.announcementId))
 				.thenReturn(Optional.of(announcement(AnnouncementStatus.PUBLISHED, 4, 4)));
 		when(this.seatLockRepository.lockByBookingIdForUpdate(this.bookingId)).thenReturn(Optional.empty());
 		BookingRecord cancelled = new BookingRecord(this.bookingId, this.announcementId, this.passengerProfileId, null,
@@ -173,7 +175,7 @@ class BookingServiceTest {
 				new CancelBookingRequest("Changement"));
 
 		assertThat(response.status()).isEqualTo("CANCELLED");
-		verify(this.announcementRepository, never()).incrementRemainingSeats(any(), anyInt());
+		verify(this.announcementSeatInventory, never()).incrementRemainingSeats(any(UUID.class), anyInt());
 	}
 
 	@Test
@@ -183,12 +185,12 @@ class BookingServiceTest {
 				null, BookingStatus.PENDING_PAYMENT, 1, FIXED_NOW, FIXED_NOW, null,
 				FIXED_NOW.plus(Duration.ofMinutes(10)), null);
 		when(this.bookingRepository.lockByIdForUpdate(this.bookingId)).thenReturn(Optional.of(pendingPayment));
-		when(this.announcementRepository.findById(this.announcementId))
+		when(this.announcementSeatInventory.findById(this.announcementId))
 				.thenReturn(Optional.of(announcement(AnnouncementStatus.PUBLISHED, 4, 3)));
 		SeatLockRecord lock = new SeatLockRecord(UUID.randomUUID(), this.announcementId, this.bookingId, 1,
 				FIXED_NOW, FIXED_NOW.plus(Duration.ofMinutes(10)), false);
 		when(this.seatLockRepository.lockByBookingIdForUpdate(this.bookingId)).thenReturn(Optional.of(lock));
-		when(this.announcementRepository.incrementRemainingSeats(this.announcementId, 1))
+		when(this.announcementSeatInventory.incrementRemainingSeats(this.announcementId, 1))
 				.thenReturn(announcement(AnnouncementStatus.PUBLISHED, 4, 4));
 		when(this.seatLockRepository.markConsumed(lock.id())).thenReturn(
 				new SeatLockRecord(lock.id(), lock.announcementId(), lock.bookingId(), 1, lock.lockedAt(),
@@ -201,7 +203,7 @@ class BookingServiceTest {
 				new CancelBookingRequest("Annulation"));
 
 		assertThat(response.status()).isEqualTo("CANCELLED");
-		verify(this.announcementRepository).incrementRemainingSeats(this.announcementId, 1);
+		verify(this.announcementSeatInventory).incrementRemainingSeats(this.announcementId, 1);
 		verify(this.seatLockRepository).markConsumed(lock.id());
 	}
 
@@ -211,7 +213,7 @@ class BookingServiceTest {
 		BookingRecord paid = new BookingRecord(this.bookingId, this.announcementId, this.passengerProfileId, null,
 				BookingStatus.PAID, 1, FIXED_NOW, FIXED_NOW, null, null, null);
 		when(this.bookingRepository.lockByIdForUpdate(this.bookingId)).thenReturn(Optional.of(paid));
-		when(this.announcementRepository.findById(this.announcementId))
+		when(this.announcementSeatInventory.findById(this.announcementId))
 				.thenReturn(Optional.of(announcement(AnnouncementStatus.PUBLISHED, 4, 3)));
 
 		assertThatThrownBy(() -> this.service.cancelBooking(this.passengerUserId, this.passengerProfileId,
@@ -232,7 +234,7 @@ class BookingServiceTest {
 		SeatLockRecord lock = new SeatLockRecord(UUID.randomUUID(), this.announcementId, this.bookingId, 1,
 				FIXED_NOW.minusSeconds(600), FIXED_NOW.minusSeconds(1), false);
 		when(this.seatLockRepository.lockByBookingIdForUpdate(this.bookingId)).thenReturn(Optional.of(lock));
-		when(this.announcementRepository.incrementRemainingSeats(this.announcementId, 1))
+		when(this.announcementSeatInventory.incrementRemainingSeats(this.announcementId, 1))
 				.thenReturn(announcement(AnnouncementStatus.PUBLISHED, 4, 4));
 		when(this.seatLockRepository.markConsumed(lock.id())).thenReturn(
 				new SeatLockRecord(lock.id(), lock.announcementId(), lock.bookingId(), 1, lock.lockedAt(),
@@ -245,7 +247,7 @@ class BookingServiceTest {
 		int count = this.service.expireUnpaidBookings();
 
 		assertThat(count).isEqualTo(1);
-		verify(this.announcementRepository).incrementRemainingSeats(this.announcementId, 1);
+		verify(this.announcementSeatInventory).incrementRemainingSeats(this.announcementId, 1);
 		verify(this.bookingNotifier).notifyBooking(expired, this.passengerProfileId, NotificationType.EXPIRATION);
 	}
 
@@ -253,7 +255,7 @@ class BookingServiceTest {
 	void getBookingVisibleToPassengerAndForbiddenToStranger() {
 		stubPassenger();
 		when(this.bookingRepository.findById(this.bookingId)).thenReturn(Optional.of(pendingBooking()));
-		when(this.announcementRepository.findById(this.announcementId))
+		when(this.announcementSeatInventory.findById(this.announcementId))
 				.thenReturn(Optional.of(announcement(AnnouncementStatus.PUBLISHED, 4, 4)));
 
 		var response = this.service.getBooking(this.passengerUserId, this.passengerProfileId, this.bookingId);
