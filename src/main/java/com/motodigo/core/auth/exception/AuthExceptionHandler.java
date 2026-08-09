@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.stream.Collectors;
 
 import com.motodigo.core.auth.dto.ErrorResponse;
+import com.motodigo.core.booking.exception.BookingException;
 import com.motodigo.core.intercity.exception.IntercityException;
 import com.motodigo.core.kyc.exception.KycException;
 import com.motodigo.core.payment.exception.PaymentException;
@@ -55,6 +56,11 @@ public class AuthExceptionHandler {
 
 	@ExceptionHandler(IntercityException.class)
 	ResponseEntity<ErrorResponse> handleIntercityException(IntercityException exception, HttpServletRequest request) {
+		return error(exception.errorCode().status(), exception.errorCode().name(), exception.getMessage(), request);
+	}
+
+	@ExceptionHandler(BookingException.class)
+	ResponseEntity<ErrorResponse> handleBookingException(BookingException exception, HttpServletRequest request) {
 		return error(exception.errorCode().status(), exception.errorCode().name(), exception.getMessage(), request);
 	}
 

@@ -49,6 +49,10 @@ motodigo:
       access-key: ${KYC_STORAGE_ACCESS_KEY:change-me}
       secret-key: ${KYC_STORAGE_SECRET_KEY:change-me}
       path-style: ${KYC_STORAGE_PATH_STYLE:true}
+  booking:
+    confirmation-ttl: ${BOOKING_CONFIRMATION_TTL:10m}
+    payment-ttl: ${BOOKING_PAYMENT_TTL:10m}
+    expiration-cron: ${BOOKING_EXPIRATION_CRON:0 * * * * *}
   payment:
     mobile-money:
       mode: ${MOBILE_MONEY_CLIENT_MODE:stub}

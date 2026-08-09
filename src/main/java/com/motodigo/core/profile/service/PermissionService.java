@@ -55,7 +55,8 @@ public class PermissionService {
 
 	private static void addAgencyActions(List<String> actions, ValidationStatus status) {
 		if (status == ValidationStatus.VALIDATED) {
-			actions.addAll(List.of("AGENCY_FLEET_MANAGE", "INTERCITY_ANNOUNCEMENT_WRITE", "AGENCY_STATS_READ"));
+			actions.addAll(List.of("AGENCY_FLEET_MANAGE", "INTERCITY_ANNOUNCEMENT_WRITE", "INTERCITY_BOOKING_CONFIRM",
+					"AGENCY_STATS_READ"));
 		}
 		else {
 			actions.add("KYC_UPLOAD");

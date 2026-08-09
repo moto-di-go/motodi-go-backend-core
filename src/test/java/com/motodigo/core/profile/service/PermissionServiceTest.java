@@ -47,7 +47,8 @@ class PermissionServiceTest {
 	@Test
 	void validatedAgencyReceivesIntercityWrite() {
 		assertThat(this.permissionService.allowedActions(profile(ProfileType.AGENCY, ValidationStatus.VALIDATED)))
-				.contains("INTERCITY_ANNOUNCEMENT_WRITE", "AGENCY_FLEET_MANAGE", "AGENCY_STATS_READ");
+				.contains("INTERCITY_ANNOUNCEMENT_WRITE", "INTERCITY_BOOKING_CONFIRM", "AGENCY_FLEET_MANAGE",
+						"AGENCY_STATS_READ");
 	}
 
 	private static ProfileRecord profile(ProfileType type, ValidationStatus status) {

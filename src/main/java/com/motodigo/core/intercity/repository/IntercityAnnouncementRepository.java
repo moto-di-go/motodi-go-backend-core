@@ -84,6 +84,45 @@ public class IntercityAnnouncementRepository {
 		return this.jdbcTemplate.query(SELECT_BASE + " WHERE id = ?", this::mapAnnouncement, id).stream().findFirst();
 	}
 
+	/**
+	 * Acquires a pessimistic row lock on the announcement for the surrounding transaction so
+	 * concurrent seat locks serialize on {@code remaining_seats}.
+	 */
+	public Optional<IntercityAnnouncementRecord> lockByIdForUpdate(UUID id) {
+		return this.jdbcTemplate.query(SELECT_BASE + " WHERE id = ? FOR UPDATE", this::mapAnnouncement, id).stream()
+				.findFirst();
+	}
+
+	public IntercityAnnouncementRecord decrementRemainingSeats(UUID id, int seats) {
+		return this.jdbcTemplate.queryForObject("""
+				UPDATE intercity_announcements
+				SET remaining_seats = remaining_seats - ?,
+				    status = CASE WHEN remaining_seats - ? = 0 THEN 'FULL' ELSE status END,
+				    updated_at = now()
+				WHERE id = ?
+				  AND remaining_seats >= ?
+				RETURNING id, publisher_profile_id, vehicle_id, route_id, departure_city, destination_city,
+				          departure_quarter, departure_date, departure_time, price_fcfa, total_seats, remaining_seats,
+				          instructions, status, created_at, updated_at
+				""", this::mapAnnouncement, seats, seats, id, seats);
+	}
+
+	public IntercityAnnouncementRecord incrementRemainingSeats(UUID id, int seats) {
+		return this.jdbcTemplate.queryForObject("""
+				UPDATE intercity_announcements
+				SET remaining_seats = remaining_seats + ?,
+				    status = CASE
+				               WHEN status = 'FULL' AND remaining_seats + ? > 0 THEN 'PUBLISHED'
+				               ELSE status
+				             END,
+				    updated_at = now()
+				WHERE id = ?
+				RETURNING id, publisher_profile_id, vehicle_id, route_id, departure_city, destination_city,
+				          departure_quarter, departure_date, departure_time, price_fcfa, total_seats, remaining_seats,
+				          instructions, status, created_at, updated_at
+				""", this::mapAnnouncement, seats, seats, id);
+	}
+
 	public List<IntercityAnnouncementRecord> findByPublisher(UUID publisherProfileId, int limit, int offset) {
 		return this.jdbcTemplate.query(SELECT_BASE + """
 				WHERE publisher_profile_id = ?
@@ -226,7 +265,7 @@ public class IntercityAnnouncementRepository {
 		sql.append(" ORDER BY a.departure_date ASC, a.departure_time ASC");
 	}
 
-	private IntercityAnnouncementRecord mapAnnouncement(ResultSet rs, int rowNum) throws SQLException {
+	private IntercityAnnouncementRecord mapAnnouncement(ResultSet rs, int ignoredRowNum) throws SQLException {
 		return new IntercityAnnouncementRecord(
 				rs.getObject("id", UUID.class),
 				rs.getObject("publisher_profile_id", UUID.class),
