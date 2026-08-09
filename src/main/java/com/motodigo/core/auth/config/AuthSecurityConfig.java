@@ -64,6 +64,9 @@ class AuthSecurityConfig {
 								"/api/v1/auth/refresh",
 								"/api/v1/auth/password/forgot",
 								"/api/v1/auth/password/reset").permitAll()
+						.requestMatchers(HttpMethod.POST,
+								"/api/v1/integrations/mobile-money/callback",
+								"/api/v1/integrations/mobile-money/*/callback").permitAll()
 						.requestMatchers(HttpMethod.POST, "/api/v1/auth/logout").authenticated()
 						.anyRequest().authenticated())
 				.oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));

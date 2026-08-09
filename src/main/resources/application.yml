@@ -49,3 +49,22 @@ motodigo:
       access-key: ${KYC_STORAGE_ACCESS_KEY:change-me}
       secret-key: ${KYC_STORAGE_SECRET_KEY:change-me}
       path-style: ${KYC_STORAGE_PATH_STYLE:true}
+  payment:
+    mobile-money:
+      mode: ${MOBILE_MONEY_CLIENT_MODE:stub}
+      pending-ttl: ${MOBILE_MONEY_PENDING_TTL:30m}
+      connect-timeout-ms: ${MOBILE_MONEY_CONNECT_TIMEOUT_MS:3000}
+      read-timeout-ms: ${MOBILE_MONEY_READ_TIMEOUT_MS:5000}
+      providers:
+        MTN_MOMO:
+          base-url: ${MTN_MOMO_BASE_URL:https://placeholder.mtn.example}
+          api-key: ${MTN_MOMO_API_KEY:}
+          subscription-key: ${MTN_MOMO_SUBSCRIPTION_KEY:}
+        ORANGE_MONEY:
+          base-url: ${ORANGE_MONEY_BASE_URL:https://placeholder.orange.example}
+          api-key: ${ORANGE_MONEY_API_KEY:}
+          subscription-key: ${ORANGE_MONEY_SUBSCRIPTION_KEY:}
+        AGGREGATOR:
+          base-url: ${AGGREGATOR_BASE_URL:https://placeholder.aggregator.example}
+          api-key: ${AGGREGATOR_API_KEY:}
+          subscription-key: ${AGGREGATOR_SUBSCRIPTION_KEY:}
