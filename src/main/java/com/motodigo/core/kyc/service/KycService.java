@@ -53,8 +53,17 @@ public class KycService {
 			DocumentType.DRIVER_LICENSE,
 			DocumentType.VEHICLE_REGISTRATION,
 			DocumentType.INSURANCE);
+	private static final List<DocumentType> TRANSPORTER_REQUIRED_DOCUMENTS = List.of(
+			DocumentType.CNI,
+			DocumentType.PROFILE_PHOTO,
+			DocumentType.DRIVER_LICENSE,
+			DocumentType.VEHICLE_REGISTRATION,
+			DocumentType.INSURANCE,
+			DocumentType.VEHICLE_PHOTO);
 	private static final List<String> ALLOWED_MIME_TYPES = List.of("image/jpeg", "image/png", "application/pdf");
 	private static final List<String> ALLOWED_EXTENSIONS = List.of(".jpg", ".jpeg", ".png", ".pdf");
+	private static final String DEFAULT_TRANSPORTER_VEHICLE_TYPE = "CAR";
+	private static final int DEFAULT_TRANSPORTER_VEHICLE_CAPACITY = 4;
 
 	private final KycRepository kycRepository;
 	private final DocumentStorage documentStorage;
@@ -83,17 +92,22 @@ public class KycService {
 		String mimeType = normalizedMimeType(file);
 		String fileName = sanitizedFileName(file.getOriginalFilename(), type);
 		validateFile(fileName, mimeType, content.length);
+		UUID linkedVehicleId = resolveVehicleId(profile, type, vehicleId);
 
 		String checksum = sha256(content);
 		String storageKey = "kyc/" + profile.id() + "/" + UUID.randomUUID() + "-" + fileName + ".enc";
 		String encryptedStorageKey = this.documentStorage.put(storageKey, content, mimeType);
 		OfficialDocumentRecord document;
 		try {
-			document = this.kycRepository.saveDocument(profile.id(), vehicleId, type, DocumentStatus.PENDING_REVIEW,
+			document = this.kycRepository.saveDocument(profile.id(), linkedVehicleId, type, DocumentStatus.PENDING_REVIEW,
 					encryptedStorageKey, fileName, mimeType, content.length, checksum);
 		}
 		catch (DuplicateKeyException ex) {
 			throw new KycException(KycErrorCode.KYC_DOCUMENT_DUPLICATE);
+		}
+
+		if (profile.type() == ProfileType.TRANSPORTER && type == DocumentType.VEHICLE_PHOTO && linkedVehicleId != null) {
+			this.kycRepository.updateTransporterVehicleId(profile.id(), linkedVehicleId);
 		}
 
 		List<OfficialDocumentRecord> documents = this.kycRepository.findDocumentsByProfile(profile.id());
@@ -104,6 +118,35 @@ public class KycService {
 			this.kycRepository.updateProfileStatus(profile.id(), validationStatus);
 		}
 		return UploadKycDocumentResponse.from(profile.id(), validationStatus, document, requirements);
+	}
+
+	private UUID resolveVehicleId(KycProfileRecord profile, DocumentType type, UUID vehicleId) {
+		if (vehicleId != null) {
+			if (!this.kycRepository.isVehicleOwnedByProfile(vehicleId, profile.id())) {
+				throw new KycException(KycErrorCode.KYC_DOCUMENT_INVALID);
+			}
+			return vehicleId;
+		}
+		if (profile.type() != ProfileType.TRANSPORTER || type != DocumentType.VEHICLE_PHOTO) {
+			return null;
+		}
+		UUID existing = this.kycRepository.findTransporterVehicleId(profile.id());
+		if (existing != null) {
+			return existing;
+		}
+		UUID created = this.kycRepository.createVehicleForProfile(profile.id(), DEFAULT_TRANSPORTER_VEHICLE_TYPE,
+				DEFAULT_TRANSPORTER_VEHICLE_CAPACITY, "PENDING");
+		if (created == null) {
+			throw new KycException(KycErrorCode.KYC_DOCUMENT_INVALID);
+		}
+		return created;
+	}
+
+	private void syncVehicleStatusFromDocument(OfficialDocumentRecord document, boolean accepted) {
+		if (document.type() != DocumentType.VEHICLE_PHOTO || document.vehicleId() == null) {
+			return;
+		}
+		this.kycRepository.updateVehicleValidationStatus(document.vehicleId(), accepted ? "VALIDATED" : "REJECTED");
 	}
 
 	@Transactional(readOnly = true)
@@ -190,6 +233,7 @@ public class KycService {
 		for (OfficialDocumentRecord document : pendingDocuments) {
 			this.kycRepository.saveAudit(document.id(), adminAccess.actorProfileId(), accessAction,
 					adminAccess.actorRole(), adminAccess.correlationId());
+			syncVehicleStatusFromDocument(document, request.decision() == KycDecision.VALIDATE);
 		}
 		this.kycRepository.queueKycDecisionNotification(profile.userId(), request.decision(), profile.displayName(), reason);
 
@@ -224,6 +268,7 @@ public class KycService {
 			this.kycRepository.updateDocumentStatus(document.id(), DocumentStatus.ACCEPTED, null);
 			this.kycRepository.saveAudit(document.id(), adminAccess.actorProfileId(), AccessAction.APPROVE,
 					adminAccess.actorRole(), adminAccess.correlationId());
+			syncVehicleStatusFromDocument(document, true);
 			if (allRequiredDocumentsAccepted(profile.id(), profile.type())) {
 				profileStatus = ValidationStatus.VALIDATED;
 				this.kycRepository.updateProfileStatus(profile.id(), profileStatus);
@@ -234,6 +279,7 @@ public class KycService {
 		else {
 			this.kycRepository.saveAudit(document.id(), adminAccess.actorProfileId(), AccessAction.REJECT,
 					adminAccess.actorRole(), adminAccess.correlationId());
+			syncVehicleStatusFromDocument(document, false);
 			this.documentStorage.delete(document.encryptedStorageKey());
 			this.kycRepository.deleteDocument(document.id());
 			profileStatus = this.kycRepository.countPendingDocumentsByProfile(profile.id()) > 0
@@ -314,6 +360,9 @@ public class KycService {
 
 	private static List<DocumentType> requiredDocumentTypes(ProfileType profileType) {
 		requireEligibleProfile(profileType);
+		if (profileType == ProfileType.TRANSPORTER) {
+			return TRANSPORTER_REQUIRED_DOCUMENTS;
+		}
 		return SELF_SERVICE_REQUIRED_DOCUMENTS;
 	}
 

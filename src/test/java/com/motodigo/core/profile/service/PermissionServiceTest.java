@@ -33,6 +33,23 @@ class PermissionServiceTest {
 				.doesNotContain("KYC_UPLOAD");
 	}
 
+	@Test
+	void validatedTransporterReceivesIntercityWrite() {
+		assertThat(this.permissionService.allowedActions(profile(ProfileType.TRANSPORTER, ValidationStatus.PENDING)))
+				.contains("KYC_UPLOAD")
+				.doesNotContain("INTERCITY_ANNOUNCEMENT_WRITE");
+
+		assertThat(this.permissionService.allowedActions(profile(ProfileType.TRANSPORTER, ValidationStatus.VALIDATED)))
+				.contains("INTERCITY_ANNOUNCEMENT_WRITE", "INTERCITY_BOOKING_CONFIRM")
+				.doesNotContain("KYC_UPLOAD");
+	}
+
+	@Test
+	void validatedAgencyReceivesIntercityWrite() {
+		assertThat(this.permissionService.allowedActions(profile(ProfileType.AGENCY, ValidationStatus.VALIDATED)))
+				.contains("INTERCITY_ANNOUNCEMENT_WRITE", "AGENCY_FLEET_MANAGE", "AGENCY_STATS_READ");
+	}
+
 	private static ProfileRecord profile(ProfileType type, ValidationStatus status) {
 		return new ProfileRecord(UUID.randomUUID(), UUID.randomUUID(), type, status, "Profile", null, BigDecimal.ZERO, true,
 				Instant.now(), Instant.now(), null, null, null, null, null, null);

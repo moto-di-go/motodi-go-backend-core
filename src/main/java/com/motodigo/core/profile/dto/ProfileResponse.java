@@ -53,7 +53,8 @@ public record ProfileResponse(
 						profile.motoTaxi().operatingZone()),
 				profile.transporter() == null ? null : new TransporterDetailsResponse(
 						profile.transporter().permitNumber(),
-						profile.transporter().companyName()),
+						profile.transporter().companyName(),
+						profile.transporter().vehicleId()),
 				profile.agency() == null ? null : new AgencyDetailsResponse(
 						profile.agency().legalName(),
 						profile.agency().tradeRegisterNumber(),
@@ -73,7 +74,7 @@ public record ProfileResponse(
 	public record MotoTaxiDetailsResponse(String licenseNumber, String operatingZone) {
 	}
 
-	public record TransporterDetailsResponse(String permitNumber, String companyName) {
+	public record TransporterDetailsResponse(String permitNumber, String companyName, UUID vehicleId) {
 	}
 
 	public record AgencyDetailsResponse(String legalName, String tradeRegisterNumber, String billingPlan) {

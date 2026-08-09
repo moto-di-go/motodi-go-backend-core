@@ -32,7 +32,7 @@ public record ProfileRecord(
 	public record MotoTaxiDetails(String licenseNumber, String operatingZone) {
 	}
 
-	public record TransporterDetails(String permitNumber, String companyName) {
+	public record TransporterDetails(String permitNumber, String companyName, UUID vehicleId) {
 	}
 
 	public record AgencyDetails(String legalName, String tradeRegisterNumber, String billingPlan) {

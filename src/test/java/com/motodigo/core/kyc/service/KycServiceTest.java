@@ -161,7 +161,7 @@ class KycServiceTest {
 				.thenReturn(Optional.of(profile(profileId, userId, ProfileType.TRANSPORTER, ValidationStatus.PENDING)));
 		when(this.kycRepository.saveDocumentDecision(document, actorId, KycDecision.VALIDATE, null))
 				.thenReturn(decision);
-		when(this.kycRepository.countAcceptedRequiredDocumentTypes(eq(profileId), any())).thenReturn(5L);
+		when(this.kycRepository.countAcceptedRequiredDocumentTypes(eq(profileId), any())).thenReturn(6L);
 
 		var response = this.service.decideDocument(document.id(),
 				new AdminKycDecisionRequest(KycDecision.VALIDATE, null),
@@ -311,6 +311,21 @@ class KycServiceTest {
 	}
 
 	@Test
+	void listCurrentDocumentsRequiresVehiclePhotoForTransporter() {
+		UUID userId = UUID.randomUUID();
+		UUID profileId = UUID.randomUUID();
+		when(this.kycRepository.findProfileById(profileId))
+				.thenReturn(Optional.of(profile(profileId, userId, ProfileType.TRANSPORTER, ValidationStatus.PENDING)));
+		when(this.kycRepository.findDocumentsByProfile(profileId)).thenReturn(List.of());
+
+		var response = this.service.listCurrentDocuments(userId, profileId);
+
+		Assertions.assertThat(response.requirements()).hasSize(6);
+		Assertions.assertThat(response.requirements())
+				.anySatisfy(requirement -> Assertions.assertThat(requirement.type()).isEqualTo(DocumentType.VEHICLE_PHOTO));
+	}
+
+	@Test
 	void uploadRejectsInvalidFileBeforeStorage() {
 		UUID userId = UUID.randomUUID();
 		UUID profileId = UUID.randomUUID();
@@ -347,6 +362,32 @@ class KycServiceTest {
 	}
 
 	@Test
+	void uploadVehiclePhotoCreatesAndLinksTransporterVehicleWhenMissing() {
+		UUID userId = UUID.randomUUID();
+		UUID profileId = UUID.randomUUID();
+		UUID vehicleId = UUID.randomUUID();
+		MockMultipartFile file = new MockMultipartFile("file", "vehicule.jpg", "image/jpeg", new byte[] { 1, 2, 3 });
+		OfficialDocumentRecord saved = document(profileId, DocumentType.VEHICLE_PHOTO, DocumentStatus.PENDING_REVIEW,
+				vehicleId);
+		when(this.kycRepository.findProfileById(profileId))
+				.thenReturn(Optional.of(profile(profileId, userId, ProfileType.TRANSPORTER, ValidationStatus.PENDING)));
+		when(this.kycRepository.findTransporterVehicleId(profileId)).thenReturn(null);
+		when(this.kycRepository.createVehicleForProfile(profileId, "CAR", 4, "PENDING")).thenReturn(vehicleId);
+		when(this.documentStorage.put(any(), any(byte[].class), eq("image/jpeg")))
+				.thenReturn("s3://bucket/kyc/doc.enc");
+		when(this.kycRepository.saveDocument(eq(profileId), eq(vehicleId), eq(DocumentType.VEHICLE_PHOTO),
+				eq(DocumentStatus.PENDING_REVIEW), eq("s3://bucket/kyc/doc.enc"), eq("vehicule.jpg"),
+				eq("image/jpeg"), eq(3L), any())).thenReturn(saved);
+		when(this.kycRepository.findDocumentsByProfile(profileId)).thenReturn(List.of(saved));
+
+		var response = this.service.uploadDocument(userId, profileId, DocumentType.VEHICLE_PHOTO, null, file);
+
+		Assertions.assertThat(response.document().vehicleId()).isEqualTo(vehicleId);
+		verify(this.kycRepository).createVehicleForProfile(profileId, "CAR", 4, "PENDING");
+		verify(this.kycRepository).updateTransporterVehicleId(profileId, vehicleId);
+	}
+
+	@Test
 	void uploadStoresDocumentAndMarksRejectedProfilePendingWhenComplete() {
 		UUID userId = UUID.randomUUID();
 		UUID profileId = UUID.randomUUID();
@@ -365,7 +406,8 @@ class KycServiceTest {
 				document(profileId, DocumentType.PROFILE_PHOTO, DocumentStatus.ACCEPTED),
 				document(profileId, DocumentType.DRIVER_LICENSE, DocumentStatus.ACCEPTED),
 				saved,
-				document(profileId, DocumentType.INSURANCE, DocumentStatus.ACCEPTED)));
+				document(profileId, DocumentType.INSURANCE, DocumentStatus.ACCEPTED),
+				document(profileId, DocumentType.VEHICLE_PHOTO, DocumentStatus.ACCEPTED)));
 
 		var response = this.service.uploadDocument(userId, profileId, DocumentType.VEHICLE_REGISTRATION, null, file);
 
@@ -386,9 +428,13 @@ class KycServiceTest {
 	}
 
 	private static OfficialDocumentRecord document(UUID profileId, DocumentType type, DocumentStatus status) {
-		return new OfficialDocumentRecord(UUID.randomUUID(), profileId, null, type,
-				status, "s3://bucket/doc.enc", type.name().toLowerCase() + ".jpg", "image/jpeg", 10, null, Instant.now(),
-				Instant.now());
+		return document(profileId, type, status, null);
+	}
+
+	private static OfficialDocumentRecord document(UUID profileId, DocumentType type, DocumentStatus status,
+			UUID vehicleId) {
+		return new OfficialDocumentRecord(UUID.randomUUID(), profileId, vehicleId, type, status, "s3://bucket/doc.enc",
+				type.name().toLowerCase() + ".jpg", "image/jpeg", 10, null, Instant.now(), Instant.now());
 	}
 
 	private static ValidationDecisionRecord decision(UUID profileId, UUID actorId, KycDecision decision, String reason) {
