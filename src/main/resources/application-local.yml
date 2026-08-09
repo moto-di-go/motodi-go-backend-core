@@ -37,3 +37,7 @@ motodigo:
     checksum-pepper: ${KYC_CHECKSUM_PEPPER:change-me-kyc-checksum-pepper}
   gis:
     routes-yaounde-path: ${GIS_ROUTES_YAOUNDE_PATH:./data/gis/routes_yaounde.gpkg}
+  payment:
+    mobile-money:
+      mode: ${MOBILE_MONEY_CLIENT_MODE:stub}
+      pending-ttl: ${MOBILE_MONEY_PENDING_TTL:30m}

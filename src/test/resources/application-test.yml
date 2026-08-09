@@ -4,3 +4,7 @@ motodigo:
   otp:
     provider: test
     pepper: test-otp-pepper-at-least-16-bytes
+  payment:
+    mobile-money:
+      mode: stub
+      pending-ttl: 30m
