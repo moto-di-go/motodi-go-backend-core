@@ -104,6 +104,9 @@ class IntercityServiceTest {
 		IntercityAnnouncementRecord saved = announcement(AnnouncementStatus.PUBLISHED, 14, 14);
 		when(this.announcementRepository.insert(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
 				anyInt(), any(), eq(AnnouncementStatus.PUBLISHED))).thenReturn(saved);
+		when(this.profileRepository.findById(this.profileId))
+				.thenReturn(Optional.of(profile(ProfileType.TRANSPORTER, ValidationStatus.VALIDATED, true)));
+		when(this.announcementRepository.findDepartureCoords(saved.id())).thenReturn(Optional.empty());
 
 		var response = this.service.create(this.userId, this.profileId, futureRequest(14));
 
@@ -125,7 +128,7 @@ class IntercityServiceTest {
 
 		assertThat(page.items()).isEmpty();
 		assertThat(page.wideningSuggestions()).extracting(WideningSuggestion::code)
-				.contains("RELAX_DATE", "RAISE_MAX_PRICE", "DROP_QUARTER", "DROP_TIME_RANGE", "INCLUDE_FULL");
+				.contains("RELAX_DATE", "RAISE_MAX_PRICE", "DROP_PT_RAMASSAGE", "DROP_TIME_RANGE", "INCLUDE_FULL");
 	}
 
 	@Test
@@ -150,6 +153,10 @@ class IntercityServiceTest {
 		when(this.announcementRepository.findById(existing.id())).thenReturn(Optional.of(existing));
 		when(this.announcementRepository.updateStatus(existing.id(), AnnouncementStatus.CLOSED))
 				.thenReturn(announcement(AnnouncementStatus.CLOSED, 10, 10));
+		when(this.profileRepository.findById(this.profileId))
+				.thenReturn(Optional.of(profile(ProfileType.TRANSPORTER, ValidationStatus.VALIDATED, true)));
+		when(this.vehicleLookupRepository.findById(this.vehicleId)).thenReturn(Optional.of(validatedVehicle(10)));
+		when(this.announcementRepository.findDepartureCoords(any())).thenReturn(Optional.empty());
 
 		var response = this.service.close(this.userId, this.profileId, existing.id());
 

@@ -76,6 +76,12 @@ public class ProfileRepository {
 				""", this::mapProfile, userId, profileId).stream().findFirst();
 	}
 
+	public Optional<ProfileRecord> findById(UUID profileId) {
+		return this.jdbcTemplate.query(SELECT_JOINED + """
+				WHERE p.id = ?
+				""", this::mapProfile, profileId).stream().findFirst();
+	}
+
 	public Optional<ProfileRecord> findActiveByUserId(UUID userId) {
 		return this.jdbcTemplate.query(SELECT_JOINED + """
 				WHERE p.user_id = ? AND p.active = true

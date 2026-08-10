@@ -12,13 +12,19 @@ public record BookingResponse(
 		UUID tripId,
 		String status,
 		int seatsRequested,
+		String contactPhone,
 		Instant requestedAt,
 		Instant confirmedAt,
 		Instant cancelledAt,
 		Instant expiresAt,
-		String cancellationReason) {
+		String cancellationReason,
+		String passengerDisplayName) {
 
 	public static BookingResponse from(BookingRecord booking) {
+		return from(booking, null);
+	}
+
+	public static BookingResponse from(BookingRecord booking, String passengerDisplayName) {
 		return new BookingResponse(
 				booking.id(),
 				booking.announcementId(),
@@ -26,10 +32,12 @@ public record BookingResponse(
 				booking.tripId(),
 				booking.status().name(),
 				booking.seatsRequested(),
+				booking.contactPhone(),
 				booking.requestedAt(),
 				booking.confirmedAt(),
 				booking.cancelledAt(),
 				booking.expiresAt(),
-				booking.cancellationReason());
+				booking.cancellationReason(),
+				passengerDisplayName);
 	}
 }

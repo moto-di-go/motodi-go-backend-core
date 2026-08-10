@@ -20,7 +20,7 @@ import org.springframework.stereotype.Repository;
 public class BookingRepository {
 
 	private static final String SELECT_BASE = """
-			SELECT id, announcement_id, passenger_profile_id, trip_id, status, seats_requested,
+			SELECT id, announcement_id, passenger_profile_id, trip_id, status, seats_requested, contact_phone,
 			       requested_at, confirmed_at, cancelled_at, expires_at, cancellation_reason
 			FROM bookings
 			""";
@@ -31,13 +31,15 @@ public class BookingRepository {
 		this.jdbcTemplate = jdbcTemplate;
 	}
 
-	public BookingRecord insert(UUID announcementId, UUID passengerProfileId, int seatsRequested, Instant expiresAt) {
+	public BookingRecord insert(UUID announcementId, UUID passengerProfileId, int seatsRequested, String contactPhone,
+			Instant expiresAt) {
 		return this.jdbcTemplate.queryForObject("""
-				INSERT INTO bookings (announcement_id, passenger_profile_id, status, seats_requested, expires_at)
-				VALUES (?, ?, 'PENDING', ?, ?)
-				RETURNING id, announcement_id, passenger_profile_id, trip_id, status, seats_requested,
+				INSERT INTO bookings (announcement_id, passenger_profile_id, status, seats_requested, contact_phone, expires_at)
+				VALUES (?, ?, 'PENDING', ?, ?, ?)
+				RETURNING id, announcement_id, passenger_profile_id, trip_id, status, seats_requested, contact_phone,
 				          requested_at, confirmed_at, cancelled_at, expires_at, cancellation_reason
-				""", this::mapBooking, announcementId, passengerProfileId, seatsRequested, Timestamp.from(expiresAt));
+				""", this::mapBooking, announcementId, passengerProfileId, seatsRequested, contactPhone,
+				Timestamp.from(expiresAt));
 	}
 
 	public Optional<BookingRecord> findById(UUID id) {
@@ -87,7 +89,7 @@ public class BookingRepository {
 				    expires_at = COALESCE(?, expires_at),
 				    cancellation_reason = COALESCE(?, cancellation_reason)
 				WHERE id = ?
-				RETURNING id, announcement_id, passenger_profile_id, trip_id, status, seats_requested,
+				RETURNING id, announcement_id, passenger_profile_id, trip_id, status, seats_requested, contact_phone,
 				          requested_at, confirmed_at, cancelled_at, expires_at, cancellation_reason
 				""", this::mapBooking,
 				status.name(),
@@ -105,7 +107,7 @@ public class BookingRepository {
 				    cancelled_at = ?,
 				    cancellation_reason = ?
 				WHERE id = ?
-				RETURNING id, announcement_id, passenger_profile_id, trip_id, status, seats_requested,
+				RETURNING id, announcement_id, passenger_profile_id, trip_id, status, seats_requested, contact_phone,
 				          requested_at, confirmed_at, cancelled_at, expires_at, cancellation_reason
 				""", this::mapBooking, Timestamp.from(cancelledAt), reason, id);
 	}
@@ -115,7 +117,7 @@ public class BookingRepository {
 				UPDATE bookings
 				SET status = 'EXPIRED'
 				WHERE id = ?
-				RETURNING id, announcement_id, passenger_profile_id, trip_id, status, seats_requested,
+				RETURNING id, announcement_id, passenger_profile_id, trip_id, status, seats_requested, contact_phone,
 				          requested_at, confirmed_at, cancelled_at, expires_at, cancellation_reason
 				""", this::mapBooking, id);
 	}
@@ -127,7 +129,7 @@ public class BookingRepository {
 				    confirmed_at = ?,
 				    expires_at = ?
 				WHERE id = ?
-				RETURNING id, announcement_id, passenger_profile_id, trip_id, status, seats_requested,
+				RETURNING id, announcement_id, passenger_profile_id, trip_id, status, seats_requested, contact_phone,
 				          requested_at, confirmed_at, cancelled_at, expires_at, cancellation_reason
 				""", this::mapBooking, Timestamp.from(confirmedAt), Timestamp.from(expiresAt), id);
 	}
@@ -150,6 +152,7 @@ public class BookingRepository {
 				rs.getObject("trip_id", UUID.class),
 				BookingStatus.valueOf(rs.getString("status")),
 				rs.getInt("seats_requested"),
+				rs.getString("contact_phone"),
 				toInstant(rs.getObject("requested_at")),
 				toInstantNullable(rs.getObject("confirmed_at")),
 				toInstantNullable(rs.getObject("cancelled_at")),

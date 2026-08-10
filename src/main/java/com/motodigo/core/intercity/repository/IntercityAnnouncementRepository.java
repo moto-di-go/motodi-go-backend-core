@@ -20,6 +20,7 @@ import com.motodigo.core.intercity.dto.GeoPointRequest;
 import com.motodigo.core.intercity.entity.AnnouncementSort;
 import com.motodigo.core.intercity.entity.AnnouncementStatus;
 import com.motodigo.core.intercity.entity.IntercityAnnouncementRecord;
+import com.motodigo.core.intercity.support.AccentFold;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -30,7 +31,7 @@ public class IntercityAnnouncementRepository {
 
 	private static final String SELECT_BASE = """
 			SELECT id, publisher_profile_id, vehicle_id, route_id, departure_city, destination_city,
-			       departure_quarter, departure_date, departure_time, price_fcfa, total_seats, remaining_seats,
+			       pt_ramassage, departure_date, departure_time, price_fcfa, total_seats, remaining_seats,
 			       instructions, status, created_at, updated_at
 			FROM intercity_announcements
 			""";
@@ -42,35 +43,35 @@ public class IntercityAnnouncementRepository {
 	}
 
 	public IntercityAnnouncementRecord insert(UUID publisherProfileId, UUID vehicleId, String departureCity,
-			String destinationCity, String departureQuarter, GeoPointRequest departurePoint,
+			String destinationCity, String ptRamassage, GeoPointRequest departurePoint,
 			GeoPointRequest destinationPoint, LocalDate departureDate, LocalTime departureTime, BigDecimal priceFcfa,
 			int totalSeats, String instructions, AnnouncementStatus status) {
 		return this.jdbcTemplate.queryForObject("""
 				INSERT INTO intercity_announcements (
-				  publisher_profile_id, vehicle_id, departure_city, destination_city, departure_quarter,
+				  publisher_profile_id, vehicle_id, departure_city, destination_city, pt_ramassage,
 				  departure_point_geom, destination_point_geom, departure_date, departure_time,
 				  price_fcfa, total_seats, remaining_seats, instructions, status
 				) VALUES (
 				  ?, ?, ?, ?, ?,
-				  CASE WHEN ? IS NULL THEN NULL ELSE ST_SetSRID(ST_MakePoint(?, ?), 4326) END,
-				  CASE WHEN ? IS NULL THEN NULL ELSE ST_SetSRID(ST_MakePoint(?, ?), 4326) END,
+				  CASE WHEN ? THEN ST_SetSRID(ST_MakePoint(?, ?), 4326) ELSE NULL END,
+				  CASE WHEN ? THEN ST_SetSRID(ST_MakePoint(?, ?), 4326) ELSE NULL END,
 				  ?, ?, ?, ?, ?, ?, ?
 				)
 				RETURNING id, publisher_profile_id, vehicle_id, route_id, departure_city, destination_city,
-				          departure_quarter, departure_date, departure_time, price_fcfa, total_seats, remaining_seats,
+				          pt_ramassage, departure_date, departure_time, price_fcfa, total_seats, remaining_seats,
 				          instructions, status, created_at, updated_at
 				""", this::mapAnnouncement,
 				publisherProfileId,
 				vehicleId,
 				departureCity,
 				destinationCity,
-				departureQuarter,
-				departurePoint == null ? null : Boolean.TRUE,
-				departurePoint == null ? null : departurePoint.longitude(),
-				departurePoint == null ? null : departurePoint.latitude(),
-				destinationPoint == null ? null : Boolean.TRUE,
-				destinationPoint == null ? null : destinationPoint.longitude(),
-				destinationPoint == null ? null : destinationPoint.latitude(),
+				ptRamassage,
+				departurePoint != null,
+				departurePoint == null ? 0d : departurePoint.longitude(),
+				departurePoint == null ? 0d : departurePoint.latitude(),
+				destinationPoint != null,
+				destinationPoint == null ? 0d : destinationPoint.longitude(),
+				destinationPoint == null ? 0d : destinationPoint.latitude(),
 				Date.valueOf(departureDate),
 				Time.valueOf(departureTime),
 				priceFcfa,
@@ -82,6 +83,26 @@ public class IntercityAnnouncementRepository {
 
 	public Optional<IntercityAnnouncementRecord> findById(UUID id) {
 		return this.jdbcTemplate.query(SELECT_BASE + " WHERE id = ?", this::mapAnnouncement, id).stream().findFirst();
+	}
+
+	public Optional<double[]> findDepartureCoords(UUID id) {
+		return this.jdbcTemplate.query("""
+				SELECT ST_Y(departure_point_geom::geometry) AS lat, ST_X(departure_point_geom::geometry) AS lon
+				FROM intercity_announcements
+				WHERE id = ?
+				  AND departure_point_geom IS NOT NULL
+				""", (rs, rowNum) -> new double[] { rs.getDouble("lat"), rs.getDouble("lon") }, id).stream().findFirst();
+	}
+
+	public boolean existsPublishedOrFullWithVehicle(UUID vehicleId) {
+		Boolean exists = this.jdbcTemplate.queryForObject("""
+				SELECT EXISTS (
+				  SELECT 1 FROM intercity_announcements
+				  WHERE vehicle_id = ?
+				    AND status IN ('PUBLISHED', 'FULL')
+				)
+				""", Boolean.class, vehicleId);
+		return Boolean.TRUE.equals(exists);
 	}
 
 	/**
@@ -102,7 +123,7 @@ public class IntercityAnnouncementRepository {
 				WHERE id = ?
 				  AND remaining_seats >= ?
 				RETURNING id, publisher_profile_id, vehicle_id, route_id, departure_city, destination_city,
-				          departure_quarter, departure_date, departure_time, price_fcfa, total_seats, remaining_seats,
+				          pt_ramassage, departure_date, departure_time, price_fcfa, total_seats, remaining_seats,
 				          instructions, status, created_at, updated_at
 				""", this::mapAnnouncement, seats, seats, id, seats);
 	}
@@ -118,7 +139,7 @@ public class IntercityAnnouncementRepository {
 				    updated_at = now()
 				WHERE id = ?
 				RETURNING id, publisher_profile_id, vehicle_id, route_id, departure_city, destination_city,
-				          departure_quarter, departure_date, departure_time, price_fcfa, total_seats, remaining_seats,
+				          pt_ramassage, departure_date, departure_time, price_fcfa, total_seats, remaining_seats,
 				          instructions, status, created_at, updated_at
 				""", this::mapAnnouncement, seats, seats, id);
 	}
@@ -139,18 +160,18 @@ public class IntercityAnnouncementRepository {
 	}
 
 	public IntercityAnnouncementRecord update(UUID id, String departureCity, String destinationCity,
-			String departureQuarter, GeoPointRequest departurePoint, GeoPointRequest destinationPoint,
+			String ptRamassage, GeoPointRequest departurePoint, GeoPointRequest destinationPoint,
 			LocalDate departureDate, LocalTime departureTime, BigDecimal priceFcfa, int totalSeats, int remainingSeats,
 			UUID vehicleId, String instructions) {
 		return this.jdbcTemplate.queryForObject("""
 				UPDATE intercity_announcements
 				SET departure_city = ?,
 				    destination_city = ?,
-				    departure_quarter = ?,
-				    departure_point_geom = CASE WHEN ? IS NULL THEN departure_point_geom
-				                               ELSE ST_SetSRID(ST_MakePoint(?, ?), 4326) END,
-				    destination_point_geom = CASE WHEN ? IS NULL THEN destination_point_geom
-				                                  ELSE ST_SetSRID(ST_MakePoint(?, ?), 4326) END,
+				    pt_ramassage = ?,
+				    departure_point_geom = CASE WHEN ? THEN ST_SetSRID(ST_MakePoint(?, ?), 4326)
+				                               ELSE departure_point_geom END,
+				    destination_point_geom = CASE WHEN ? THEN ST_SetSRID(ST_MakePoint(?, ?), 4326)
+				                                  ELSE destination_point_geom END,
 				    departure_date = ?,
 				    departure_time = ?,
 				    price_fcfa = ?,
@@ -161,18 +182,18 @@ public class IntercityAnnouncementRepository {
 				    updated_at = now()
 				WHERE id = ?
 				RETURNING id, publisher_profile_id, vehicle_id, route_id, departure_city, destination_city,
-				          departure_quarter, departure_date, departure_time, price_fcfa, total_seats, remaining_seats,
+				          pt_ramassage, departure_date, departure_time, price_fcfa, total_seats, remaining_seats,
 				          instructions, status, created_at, updated_at
 				""", this::mapAnnouncement,
 				departureCity,
 				destinationCity,
-				departureQuarter,
-				departurePoint == null ? null : Boolean.TRUE,
-				departurePoint == null ? null : departurePoint.longitude(),
-				departurePoint == null ? null : departurePoint.latitude(),
-				destinationPoint == null ? null : Boolean.TRUE,
-				destinationPoint == null ? null : destinationPoint.longitude(),
-				destinationPoint == null ? null : destinationPoint.latitude(),
+				ptRamassage,
+				departurePoint != null,
+				departurePoint == null ? 0d : departurePoint.longitude(),
+				departurePoint == null ? 0d : departurePoint.latitude(),
+				destinationPoint != null,
+				destinationPoint == null ? 0d : destinationPoint.longitude(),
+				destinationPoint == null ? 0d : destinationPoint.latitude(),
 				Date.valueOf(departureDate),
 				Time.valueOf(departureTime),
 				priceFcfa,
@@ -189,7 +210,7 @@ public class IntercityAnnouncementRepository {
 				SET status = ?, updated_at = now()
 				WHERE id = ?
 				RETURNING id, publisher_profile_id, vehicle_id, route_id, departure_city, destination_city,
-				          departure_quarter, departure_date, departure_time, price_fcfa, total_seats, remaining_seats,
+				          pt_ramassage, departure_date, departure_time, price_fcfa, total_seats, remaining_seats,
 				          instructions, status, created_at, updated_at
 				""", this::mapAnnouncement, status.name(), id);
 	}
@@ -197,7 +218,7 @@ public class IntercityAnnouncementRepository {
 	public List<IntercityAnnouncementRecord> search(AnnouncementSearchCriteria criteria) {
 		StringBuilder sql = new StringBuilder("""
 				SELECT a.id, a.publisher_profile_id, a.vehicle_id, a.route_id, a.departure_city, a.destination_city,
-				       a.departure_quarter, a.departure_date, a.departure_time, a.price_fcfa, a.total_seats,
+				       a.pt_ramassage, a.departure_date, a.departure_time, a.price_fcfa, a.total_seats,
 				       a.remaining_seats, a.instructions, a.status, a.created_at, a.updated_at
 				FROM intercity_announcements a
 				INNER JOIN profiles p ON p.id = a.publisher_profile_id
@@ -214,13 +235,14 @@ public class IntercityAnnouncementRepository {
 	}
 
 	private static void appendSearchFilters(StringBuilder sql, List<Object> params, AnnouncementSearchCriteria criteria) {
+		// Comparaison case/accent-insensitive via translate SQL + fold Java (sans extension unaccent).
 		if (criteria.departureCity() != null) {
-			sql.append(" AND lower(a.departure_city) = lower(?)");
-			params.add(criteria.departureCity());
+			sql.append(" AND ").append(foldCitySql("a.departure_city")).append(" = ?");
+			params.add(AccentFold.fold(criteria.departureCity()));
 		}
 		if (criteria.destinationCity() != null) {
-			sql.append(" AND lower(a.destination_city) = lower(?)");
-			params.add(criteria.destinationCity());
+			sql.append(" AND ").append(foldCitySql("a.destination_city")).append(" = ?");
+			params.add(AccentFold.fold(criteria.destinationCity()));
 		}
 		if (criteria.date() != null) {
 			sql.append(" AND a.departure_date = ?");
@@ -238,13 +260,20 @@ public class IntercityAnnouncementRepository {
 			sql.append(" AND a.departure_time <= ?");
 			params.add(Time.valueOf(criteria.timeTo()));
 		}
-		if (criteria.quarter() != null) {
-			sql.append(" AND lower(a.departure_quarter) = lower(?)");
-			params.add(criteria.quarter());
+		if (criteria.ptRamassage() != null) {
+			sql.append(" AND ").append(foldCitySql("a.pt_ramassage")).append(" = ?");
+			params.add(AccentFold.fold(criteria.ptRamassage()));
 		}
 		if (criteria.onlyAvailable()) {
 			sql.append(" AND a.remaining_seats > 0 AND a.status = 'PUBLISHED'");
 		}
+	}
+
+	/** Expr SQL : lower + suppression accents FR courants. */
+	private static String foldCitySql(String column) {
+		return "translate(lower(" + column + "), "
+				+ "'àáâãäåèéêëìíîïòóôõöùúûüýÿçñ',"
+				+ "'aaaaaaeeeeiiiiooooouuuuyycn')";
 	}
 
 	private static void appendOrderBy(StringBuilder sql, List<Object> params, AnnouncementSearchCriteria criteria) {
@@ -273,7 +302,7 @@ public class IntercityAnnouncementRepository {
 				rs.getObject("route_id", UUID.class),
 				rs.getString("departure_city"),
 				rs.getString("destination_city"),
-				rs.getString("departure_quarter"),
+				rs.getString("pt_ramassage"),
 				rs.getDate("departure_date").toLocalDate(),
 				rs.getTime("departure_time").toLocalTime(),
 				rs.getBigDecimal("price_fcfa"),

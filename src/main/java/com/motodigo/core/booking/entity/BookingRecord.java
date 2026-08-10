@@ -10,6 +10,7 @@ public record BookingRecord(
 		UUID tripId,
 		BookingStatus status,
 		int seatsRequested,
+		String contactPhone,
 		Instant requestedAt,
 		Instant confirmedAt,
 		Instant cancelledAt,

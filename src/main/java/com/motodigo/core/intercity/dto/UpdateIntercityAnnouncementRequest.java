@@ -13,7 +13,7 @@ import jakarta.validation.constraints.Size;
 public record UpdateIntercityAnnouncementRequest(
 		@Size(max = 120) String departureCity,
 		@Size(max = 120) String destinationCity,
-		@Size(max = 120) String departureQuarter,
+		@Size(max = 120) String ptRamassage,
 		@Valid GeoPointRequest departurePoint,
 		@Valid GeoPointRequest destinationPoint,
 		LocalDate departureDate,

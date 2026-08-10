@@ -74,7 +74,7 @@ public class IntercityService {
 				vehicle.id(),
 				normalizeCity(request.departureCity()),
 				normalizeCity(request.destinationCity()),
-				normalizeOptional(request.departureQuarter()),
+				normalizeOptional(request.ptRamassage()),
 				request.departurePoint(),
 				request.destinationPoint(),
 				request.departureDate(),
@@ -83,7 +83,7 @@ public class IntercityService {
 				request.totalSeats(),
 				blankToNull(request.instructions()),
 				AnnouncementStatus.PUBLISHED);
-		return IntercityAnnouncementResponse.from(saved);
+		return toResponse(saved);
 	}
 
 	@Transactional(readOnly = true)
@@ -96,7 +96,7 @@ public class IntercityService {
 				&& announcement.status() != AnnouncementStatus.FULL) {
 			throw new IntercityException(IntercityErrorCode.ANNOUNCEMENT_NOT_FOUND);
 		}
-		return IntercityAnnouncementResponse.from(announcement);
+		return toResponse(announcement);
 	}
 
 	@Transactional(readOnly = true)
@@ -107,7 +107,7 @@ public class IntercityService {
 		boolean hasMore = rows.size() > size;
 		List<IntercityAnnouncementResponse> items = rows.stream()
 				.limit(size)
-				.map(IntercityAnnouncementResponse::from)
+				.map(this::toResponse)
 				.toList();
 		return new IntercityAnnouncementMinePageResponse(items, page, size, hasMore);
 	}
@@ -147,8 +147,8 @@ public class IntercityService {
 			remainingSeats = totalSeats - bookedOrLocked;
 		}
 
-		String quarter = request.departureQuarter() != null ? normalizeOptional(request.departureQuarter())
-				: existing.departureQuarter();
+		String ptRamassage = request.ptRamassage() != null ? normalizeOptional(request.ptRamassage())
+				: existing.ptRamassage();
 		String instructions = request.instructions() != null ? blankToNull(request.instructions())
 				: existing.instructions();
 
@@ -156,7 +156,7 @@ public class IntercityService {
 				existing.id(),
 				departureCity,
 				destinationCity,
-				quarter,
+				ptRamassage,
 				request.departurePoint(),
 				request.destinationPoint(),
 				departureDate,
@@ -166,7 +166,7 @@ public class IntercityService {
 				remainingSeats,
 				vehicleId,
 				instructions);
-		return IntercityAnnouncementResponse.from(updated);
+		return toResponse(updated);
 	}
 
 	@Transactional
@@ -186,7 +186,7 @@ public class IntercityService {
 		boolean hasMore = rows.size() > normalized.size();
 		List<IntercityAnnouncementResponse> items = rows.stream()
 				.limit(normalized.size())
-				.map(IntercityAnnouncementResponse::from)
+				.map(this::toResponse)
 				.toList();
 		List<WideningSuggestion> suggestions = items.isEmpty() ? buildWideningSuggestions(normalized) : List.of();
 		return new IntercityAnnouncementSearchPageResponse(items, normalized.page(), normalized.size(), hasMore,
@@ -209,11 +209,11 @@ public class IntercityService {
 			suggestions.add(new WideningSuggestion("RAISE_MAX_PRICE",
 					"Augmenter le budget d'environ 20%.", query));
 		}
-		if (criteria.quarter() != null) {
+		if (criteria.ptRamassage() != null) {
 			Map<String, Object> query = baseSuggestedQuery(criteria);
-			query.remove("quarter");
-			suggestions.add(new WideningSuggestion("DROP_QUARTER",
-					"Retirer le filtre quartier.", query));
+			query.remove("ptRamassage");
+			suggestions.add(new WideningSuggestion("DROP_PT_RAMASSAGE",
+					"Retirer le filtre pt. ramassage.", query));
 		}
 		if (criteria.timeFrom() != null || criteria.timeTo() != null) {
 			Map<String, Object> query = baseSuggestedQuery(criteria);
@@ -226,7 +226,7 @@ public class IntercityService {
 			Map<String, Object> query = baseSuggestedQuery(criteria);
 			query.put("onlyAvailable", false);
 			suggestions.add(new WideningSuggestion("INCLUDE_FULL",
-					"Inclure les annonces completes.", query));
+					"Inclure les annonces complètes.", query));
 		}
 		if (suggestions.isEmpty()) {
 			suggestions.add(new WideningSuggestion("RELAX_DATE",
@@ -243,9 +243,23 @@ public class IntercityService {
 			throw new IntercityException(IntercityErrorCode.ANNOUNCEMENT_NOT_MODIFIABLE);
 		}
 		if (existing.status() == target) {
-			return IntercityAnnouncementResponse.from(existing);
+			return toResponse(existing);
 		}
-		return IntercityAnnouncementResponse.from(this.announcementRepository.updateStatus(existing.id(), target));
+		return toResponse(this.announcementRepository.updateStatus(existing.id(), target));
+	}
+
+	IntercityAnnouncementResponse toResponse(IntercityAnnouncementRecord record) {
+		ProfileRecord publisher = this.profileRepository.findById(record.publisherProfileId()).orElse(null);
+		VehicleRecord vehicle = record.vehicleId() == null ? null
+				: this.vehicleLookupRepository.findById(record.vehicleId()).orElse(null);
+		Double lat = null;
+		Double lon = null;
+		double[] coords = this.announcementRepository.findDepartureCoords(record.id()).orElse(null);
+		if (coords != null) {
+			lat = coords[0];
+			lon = coords[1];
+		}
+		return IntercityAnnouncementResponse.from(record, publisher, vehicle, lat, lon);
 	}
 
 	private ProfileRecord requirePublisherProfile(UUID userId, UUID activeProfileId) {
@@ -262,7 +276,7 @@ public class IntercityService {
 		}
 		if (profile.validationStatus() != ValidationStatus.VALIDATED) {
 			throw new IntercityException(IntercityErrorCode.ANNOUNCEMENT_FORBIDDEN,
-					"Seuls les profils valides peuvent publier des annonces.");
+					"Seuls les profils validés peuvent publier des annonces.");
 		}
 		return profile;
 	}
@@ -298,7 +312,7 @@ public class IntercityService {
 		}
 		if (totalSeats > vehicle.capacity()) {
 			throw new IntercityException(IntercityErrorCode.ANNOUNCEMENT_INVALID,
-					"Le nombre de places depasse la capacite du vehicule.");
+					"Le nombre de places dépasse la capacité du véhicule.");
 		}
 		return vehicle;
 	}
@@ -331,7 +345,7 @@ public class IntercityService {
 				criteria.maxPrice(),
 				criteria.timeFrom(),
 				criteria.timeTo(),
-				normalizeOptional(criteria.quarter()),
+				normalizeOptional(criteria.ptRamassage()),
 				criteria.onlyAvailable(),
 				sort,
 				criteria.nearLat(),
@@ -360,8 +374,8 @@ public class IntercityService {
 		if (criteria.timeTo() != null) {
 			query.put("timeTo", criteria.timeTo().toString());
 		}
-		if (criteria.quarter() != null) {
-			query.put("quarter", criteria.quarter());
+		if (criteria.ptRamassage() != null) {
+			query.put("ptRamassage", criteria.ptRamassage());
 		}
 		query.put("onlyAvailable", criteria.onlyAvailable());
 		return query;

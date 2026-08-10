@@ -88,29 +88,48 @@ class BookingServiceTest {
 	@Test
 	void requestBookingRejectedWhenAnnouncementFull() {
 		stubPassenger();
+		stubForeignPublisher();
 		when(this.announcementSeatInventory.findById(this.announcementId))
 				.thenReturn(Optional.of(announcement(AnnouncementStatus.PUBLISHED, 4, 0)));
 
 		assertThatThrownBy(() -> this.service.requestBooking(this.passengerUserId, this.passengerProfileId,
-				this.announcementId, new CreateBookingRequest(1)))
+				this.announcementId, new CreateBookingRequest(1, "+237670000001")))
 				.isInstanceOf(BookingException.class)
 				.extracting(ex -> ((BookingException) ex).errorCode())
 				.isEqualTo(BookingErrorCode.BOOKING_NOT_AVAILABLE);
 	}
 
 	@Test
+	void requestBookingRejectedWhenOwnAnnouncement() {
+		stubPassenger();
+		when(this.profileRepository.findOwnedById(this.passengerUserId, this.transporterProfileId))
+				.thenReturn(Optional.of(
+						profile(this.transporterProfileId, this.passengerUserId, ProfileType.TRANSPORTER)));
+		when(this.announcementSeatInventory.findById(this.announcementId))
+				.thenReturn(Optional.of(announcement(AnnouncementStatus.PUBLISHED, 4, 4)));
+
+		assertThatThrownBy(() -> this.service.requestBooking(this.passengerUserId, this.passengerProfileId,
+				this.announcementId, new CreateBookingRequest(1, "+237670000001")))
+				.isInstanceOf(BookingException.class)
+				.extracting(ex -> ((BookingException) ex).errorCode())
+				.isEqualTo(BookingErrorCode.BOOKING_OWN_ANNOUNCEMENT);
+		verify(this.bookingRepository, never()).insert(any(UUID.class), any(UUID.class), anyInt(), any(), any());
+	}
+
+	@Test
 	void requestBookingCreatesPendingAndNotifies() {
 		stubPassenger();
+		stubForeignPublisher();
 		when(this.announcementSeatInventory.findById(this.announcementId))
 				.thenReturn(Optional.of(announcement(AnnouncementStatus.PUBLISHED, 4, 4)));
 		when(this.bookingRepository.existsActiveForPassengerAndAnnouncement(this.announcementId, this.passengerProfileId))
 				.thenReturn(false);
 		BookingRecord created = pendingBooking();
 		when(this.bookingRepository.insert(eq(this.announcementId), eq(this.passengerProfileId), eq(1),
-				any(Instant.class))).thenReturn(created);
+				eq("+237670000001"), any(Instant.class))).thenReturn(created);
 
 		var response = this.service.requestBooking(this.passengerUserId, this.passengerProfileId, this.announcementId,
-				new CreateBookingRequest(1));
+				new CreateBookingRequest(1, "+237670000001"));
 
 		assertThat(response.status()).isEqualTo("PENDING");
 		verify(this.bookingNotifier).notifyBooking(created, this.transporterProfileId, NotificationType.SUBSCRIPTION);
@@ -133,7 +152,7 @@ class BookingServiceTest {
 		when(this.announcementSeatInventory.decrementRemainingSeats(this.announcementId, 1))
 				.thenReturn(announcement(AnnouncementStatus.PUBLISHED, 4, 3));
 		BookingRecord confirmed = new BookingRecord(this.bookingId, this.announcementId, this.passengerProfileId, null,
-				BookingStatus.PENDING_PAYMENT, 1, FIXED_NOW, FIXED_NOW, null, lock.expiresAt(), null);
+				BookingStatus.PENDING_PAYMENT, 1, "+237670000001", FIXED_NOW, FIXED_NOW, null, lock.expiresAt(), null);
 		when(this.bookingRepository.markPendingPayment(eq(this.bookingId), eq(FIXED_NOW), any(Instant.class)))
 				.thenReturn(confirmed);
 
@@ -168,7 +187,7 @@ class BookingServiceTest {
 				.thenReturn(Optional.of(announcement(AnnouncementStatus.PUBLISHED, 4, 4)));
 		when(this.seatLockRepository.lockByBookingIdForUpdate(this.bookingId)).thenReturn(Optional.empty());
 		BookingRecord cancelled = new BookingRecord(this.bookingId, this.announcementId, this.passengerProfileId, null,
-				BookingStatus.CANCELLED, 1, FIXED_NOW, null, FIXED_NOW, FIXED_NOW.plusSeconds(600), "Changement");
+				BookingStatus.CANCELLED, 1, "+237670000001", FIXED_NOW, null, FIXED_NOW, FIXED_NOW.plusSeconds(600), "Changement");
 		when(this.bookingRepository.markCancelled(this.bookingId, "Changement", FIXED_NOW)).thenReturn(cancelled);
 
 		var response = this.service.cancelBooking(this.passengerUserId, this.passengerProfileId, this.bookingId,
@@ -182,7 +201,7 @@ class BookingServiceTest {
 	void cancelPendingPaymentReleasesSeats() {
 		stubPassenger();
 		BookingRecord pendingPayment = new BookingRecord(this.bookingId, this.announcementId, this.passengerProfileId,
-				null, BookingStatus.PENDING_PAYMENT, 1, FIXED_NOW, FIXED_NOW, null,
+				null, BookingStatus.PENDING_PAYMENT, 1, "+237670000001", FIXED_NOW, FIXED_NOW, null,
 				FIXED_NOW.plus(Duration.ofMinutes(10)), null);
 		when(this.bookingRepository.lockByIdForUpdate(this.bookingId)).thenReturn(Optional.of(pendingPayment));
 		when(this.announcementSeatInventory.findById(this.announcementId))
@@ -196,7 +215,7 @@ class BookingServiceTest {
 				new SeatLockRecord(lock.id(), lock.announcementId(), lock.bookingId(), 1, lock.lockedAt(),
 						lock.expiresAt(), true));
 		BookingRecord cancelled = new BookingRecord(this.bookingId, this.announcementId, this.passengerProfileId, null,
-				BookingStatus.CANCELLED, 1, FIXED_NOW, FIXED_NOW, FIXED_NOW, lock.expiresAt(), "Annulation");
+				BookingStatus.CANCELLED, 1, "+237670000001", FIXED_NOW, FIXED_NOW, FIXED_NOW, lock.expiresAt(), "Annulation");
 		when(this.bookingRepository.markCancelled(this.bookingId, "Annulation", FIXED_NOW)).thenReturn(cancelled);
 
 		var response = this.service.cancelBooking(this.passengerUserId, this.passengerProfileId, this.bookingId,
@@ -211,7 +230,7 @@ class BookingServiceTest {
 	void cancelPaidIsRejected() {
 		stubPassenger();
 		BookingRecord paid = new BookingRecord(this.bookingId, this.announcementId, this.passengerProfileId, null,
-				BookingStatus.PAID, 1, FIXED_NOW, FIXED_NOW, null, null, null);
+				BookingStatus.PAID, 1, "+237670000001", FIXED_NOW, FIXED_NOW, null, null, null);
 		when(this.bookingRepository.lockByIdForUpdate(this.bookingId)).thenReturn(Optional.of(paid));
 		when(this.announcementSeatInventory.findById(this.announcementId))
 				.thenReturn(Optional.of(announcement(AnnouncementStatus.PUBLISHED, 4, 3)));
@@ -226,7 +245,7 @@ class BookingServiceTest {
 	@Test
 	void expireUnpaidBookingsMarksExpiredAndReleasesLocks() {
 		BookingRecord pendingPayment = new BookingRecord(this.bookingId, this.announcementId, this.passengerProfileId,
-				null, BookingStatus.PENDING_PAYMENT, 1, FIXED_NOW.minusSeconds(1200), FIXED_NOW.minusSeconds(600),
+				null, BookingStatus.PENDING_PAYMENT, 1, "+237670000001", FIXED_NOW.minusSeconds(1200), FIXED_NOW.minusSeconds(600),
 				null, FIXED_NOW.minusSeconds(1), null);
 		when(this.bookingRepository.findExpiredPendingOrPendingPayment(FIXED_NOW, 100))
 				.thenReturn(List.of(pendingPayment));
@@ -240,7 +259,7 @@ class BookingServiceTest {
 				new SeatLockRecord(lock.id(), lock.announcementId(), lock.bookingId(), 1, lock.lockedAt(),
 						lock.expiresAt(), true));
 		BookingRecord expired = new BookingRecord(this.bookingId, this.announcementId, this.passengerProfileId, null,
-				BookingStatus.EXPIRED, 1, pendingPayment.requestedAt(), pendingPayment.confirmedAt(), null,
+				BookingStatus.EXPIRED, 1, "+237670000001", pendingPayment.requestedAt(), pendingPayment.confirmedAt(), null,
 				pendingPayment.expiresAt(), null);
 		when(this.bookingRepository.markExpired(this.bookingId)).thenReturn(expired);
 
@@ -277,6 +296,11 @@ class BookingServiceTest {
 				.thenReturn(Optional.of(profile(this.passengerProfileId, this.passengerUserId, ProfileType.PASSENGER)));
 	}
 
+	private void stubForeignPublisher() {
+		when(this.profileRepository.findOwnedById(this.passengerUserId, this.transporterProfileId))
+				.thenReturn(Optional.empty());
+	}
+
 	private void stubTransporter() {
 		when(this.profileRepository.findOwnedById(this.transporterUserId, this.transporterProfileId))
 				.thenReturn(Optional.of(
@@ -285,7 +309,7 @@ class BookingServiceTest {
 
 	private BookingRecord pendingBooking() {
 		return new BookingRecord(this.bookingId, this.announcementId, this.passengerProfileId, null,
-				BookingStatus.PENDING, 1, FIXED_NOW, null, null, FIXED_NOW.plus(Duration.ofMinutes(10)), null);
+				BookingStatus.PENDING, 1, "+237670000001", FIXED_NOW, null, null, FIXED_NOW.plus(Duration.ofMinutes(10)), null);
 	}
 
 	private IntercityAnnouncementRecord announcement(AnnouncementStatus status, int total, int remaining) {

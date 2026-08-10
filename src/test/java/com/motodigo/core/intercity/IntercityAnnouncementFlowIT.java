@@ -80,8 +80,8 @@ class IntercityAnnouncementFlowIT {
 
 		Map<String, Object> createBody = new HashMap<>();
 		createBody.put("departureCity", "Douala");
-		createBody.put("destinationCity", "Yaounde");
-		createBody.put("departureQuarter", "Bonanjo");
+		createBody.put("destinationCity", "Yaoundé");
+		createBody.put("ptRamassage", "Bonanjo");
 		createBody.put("departureDate", LocalDate.now().plusDays(5).toString());
 		createBody.put("departureTime", "08:30:00");
 		createBody.put("priceFcfa", 9000);
@@ -115,7 +115,7 @@ class IntercityAnnouncementFlowIT {
 		AuthTokenResponse passenger = registerPassenger("+237699200202", "Secret1234");
 		String searchPath = "/api/v1/intercity/announcements?departureCity=Douala&destinationCity=Yaounde&date="
 				+ LocalDate.now().plusDays(5)
-				+ "&maxPrice=10000&timeFrom=08:00:00&timeTo=09:00:00&quarter=Bonanjo&onlyAvailable=true&sort=price";
+				+ "&maxPrice=10000&timeFrom=08:00:00&timeTo=09:00:00&ptRamassage=Bonanjo&onlyAvailable=true&sort=price";
 		var search = exchange(passenger.accessToken(), HttpMethod.GET, searchPath, null, Map.class);
 		assertThat(search.getStatusCode()).isEqualTo(HttpStatus.OK);
 		@SuppressWarnings("unchecked")
@@ -123,10 +123,12 @@ class IntercityAnnouncementFlowIT {
 		assertThat(items).hasSize(1);
 		assertThat(items.get(0).get("remainingSeats")).isEqualTo(14);
 		assertThat(items.get(0).get("id")).isEqualTo(announcementId.toString());
+		// Accent-insensitive: query "Yaounde" matches stored "Yaoundé".
+		assertThat(items.get(0).get("destinationCity")).isEqualTo("Yaoundé");
 
 		var emptySearch = exchange(passenger.accessToken(), HttpMethod.GET,
 				"/api/v1/intercity/announcements?departureCity=Douala&destinationCity=Yaounde&date="
-						+ LocalDate.now().plusDays(40) + "&maxPrice=1000&quarter=Akwa&onlyAvailable=true",
+						+ LocalDate.now().plusDays(40) + "&maxPrice=1000&ptRamassage=Akwa&onlyAvailable=true",
 				null, Map.class);
 		assertThat(emptySearch.getStatusCode()).isEqualTo(HttpStatus.OK);
 		assertThat((List<?>) emptySearch.getBody().get("items")).isEmpty();
@@ -135,7 +137,7 @@ class IntercityAnnouncementFlowIT {
 				.get("wideningSuggestions");
 		assertThat(suggestions).isNotEmpty();
 		assertThat(suggestions).extracting(s -> s.get("code"))
-				.contains("RELAX_DATE", "RAISE_MAX_PRICE", "DROP_QUARTER", "INCLUDE_FULL");
+				.contains("RELAX_DATE", "RAISE_MAX_PRICE", "DROP_PT_RAMASSAGE", "INCLUDE_FULL");
 
 		var mine = exchange(transporter.accessToken(), HttpMethod.GET, "/api/v1/intercity/announcements/mine", null,
 				Map.class);

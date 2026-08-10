@@ -77,6 +77,10 @@ public class BookingService {
 		IntercityAnnouncementRecord announcement = this.announcementSeatInventory.findById(announcementId)
 				.orElseThrow(() -> new BookingException(BookingErrorCode.BOOKING_NOT_AVAILABLE,
 						"Annonce introuvable."));
+		// Même utilisateur (profil transporteur/agence) : pas de souscription à sa propre annonce.
+		if (this.profileRepository.findOwnedById(userId, announcement.publisherProfileId()).isPresent()) {
+			throw new BookingException(BookingErrorCode.BOOKING_OWN_ANNOUNCEMENT);
+		}
 		assertAnnouncementBookable(announcement, request.seatsRequested());
 
 		if (this.bookingRepository.existsActiveForPassengerAndAnnouncement(announcementId, passenger.id())) {
@@ -87,7 +91,8 @@ public class BookingService {
 		Instant expiresAt = now.plus(this.bookingProperties.confirmationTtl());
 		BookingRecord created;
 		try {
-			created = this.bookingRepository.insert(announcementId, passenger.id(), request.seatsRequested(), expiresAt);
+			created = this.bookingRepository.insert(announcementId, passenger.id(), request.seatsRequested(),
+					request.contactPhone().trim(), expiresAt);
 		}
 		catch (DuplicateKeyException ex) {
 			throw new BookingException(BookingErrorCode.BOOKING_DUPLICATE);
@@ -216,7 +221,7 @@ public class BookingService {
 		int safeSize = size <= 0 ? 20 : Math.min(size, 100);
 		List<BookingRecord> rows = this.bookingRepository.findByAnnouncement(announcementId, safeSize + 1,
 				safePage * safeSize);
-		return toPage(rows, safePage, safeSize);
+		return toPageWithPassengerNames(rows, safePage, safeSize);
 	}
 
 	@Transactional
@@ -331,6 +336,17 @@ public class BookingService {
 	private static BookingPageResponse toPage(List<BookingRecord> rows, int page, int size) {
 		boolean hasMore = rows.size() > size;
 		List<BookingResponse> items = rows.stream().limit(size).map(BookingResponse::from).toList();
+		return new BookingPageResponse(items, page, size, hasMore);
+	}
+
+	private BookingPageResponse toPageWithPassengerNames(List<BookingRecord> rows, int page, int size) {
+		boolean hasMore = rows.size() > size;
+		List<BookingResponse> items = rows.stream().limit(size).map(booking -> {
+			String displayName = this.profileRepository.findById(booking.passengerProfileId())
+					.map(ProfileRecord::displayName)
+					.orElse(null);
+			return BookingResponse.from(booking, displayName);
+		}).toList();
 		return new BookingPageResponse(items, page, size, hasMore);
 	}
 }
