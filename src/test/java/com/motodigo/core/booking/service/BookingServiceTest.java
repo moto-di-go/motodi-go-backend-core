@@ -88,6 +88,7 @@ class BookingServiceTest {
 	@Test
 	void requestBookingRejectedWhenAnnouncementFull() {
 		stubPassenger();
+		stubForeignPublisher();
 		when(this.announcementSeatInventory.findById(this.announcementId))
 				.thenReturn(Optional.of(announcement(AnnouncementStatus.PUBLISHED, 4, 0)));
 
@@ -99,8 +100,26 @@ class BookingServiceTest {
 	}
 
 	@Test
+	void requestBookingRejectedWhenOwnAnnouncement() {
+		stubPassenger();
+		when(this.profileRepository.findOwnedById(this.passengerUserId, this.transporterProfileId))
+				.thenReturn(Optional.of(
+						profile(this.transporterProfileId, this.passengerUserId, ProfileType.TRANSPORTER)));
+		when(this.announcementSeatInventory.findById(this.announcementId))
+				.thenReturn(Optional.of(announcement(AnnouncementStatus.PUBLISHED, 4, 4)));
+
+		assertThatThrownBy(() -> this.service.requestBooking(this.passengerUserId, this.passengerProfileId,
+				this.announcementId, new CreateBookingRequest(1, "+237670000001")))
+				.isInstanceOf(BookingException.class)
+				.extracting(ex -> ((BookingException) ex).errorCode())
+				.isEqualTo(BookingErrorCode.BOOKING_OWN_ANNOUNCEMENT);
+		verify(this.bookingRepository, never()).insert(any(UUID.class), any(UUID.class), anyInt(), any(), any());
+	}
+
+	@Test
 	void requestBookingCreatesPendingAndNotifies() {
 		stubPassenger();
+		stubForeignPublisher();
 		when(this.announcementSeatInventory.findById(this.announcementId))
 				.thenReturn(Optional.of(announcement(AnnouncementStatus.PUBLISHED, 4, 4)));
 		when(this.bookingRepository.existsActiveForPassengerAndAnnouncement(this.announcementId, this.passengerProfileId))
@@ -275,6 +294,11 @@ class BookingServiceTest {
 	private void stubPassenger() {
 		when(this.profileRepository.findOwnedById(this.passengerUserId, this.passengerProfileId))
 				.thenReturn(Optional.of(profile(this.passengerProfileId, this.passengerUserId, ProfileType.PASSENGER)));
+	}
+
+	private void stubForeignPublisher() {
+		when(this.profileRepository.findOwnedById(this.passengerUserId, this.transporterProfileId))
+				.thenReturn(Optional.empty());
 	}
 
 	private void stubTransporter() {

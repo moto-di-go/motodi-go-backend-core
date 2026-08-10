@@ -17,9 +17,14 @@ public record BookingResponse(
 		Instant confirmedAt,
 		Instant cancelledAt,
 		Instant expiresAt,
-		String cancellationReason) {
+		String cancellationReason,
+		String passengerDisplayName) {
 
 	public static BookingResponse from(BookingRecord booking) {
+		return from(booking, null);
+	}
+
+	public static BookingResponse from(BookingRecord booking, String passengerDisplayName) {
 		return new BookingResponse(
 				booking.id(),
 				booking.announcementId(),
@@ -32,6 +37,7 @@ public record BookingResponse(
 				booking.confirmedAt(),
 				booking.cancelledAt(),
 				booking.expiresAt(),
-				booking.cancellationReason());
+				booking.cancellationReason(),
+				passengerDisplayName);
 	}
 }

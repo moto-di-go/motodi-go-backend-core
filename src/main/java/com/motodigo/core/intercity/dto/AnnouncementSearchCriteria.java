@@ -13,7 +13,7 @@ public record AnnouncementSearchCriteria(
 		BigDecimal maxPrice,
 		LocalTime timeFrom,
 		LocalTime timeTo,
-		String quarter,
+		String ptRamassage,
 		boolean onlyAvailable,
 		AnnouncementSort sort,
 		Double nearLat,

@@ -13,7 +13,7 @@ public record IntercityAnnouncementRecord(
 		UUID routeId,
 		String departureCity,
 		String destinationCity,
-		String departureQuarter,
+		String ptRamassage,
 		LocalDate departureDate,
 		LocalTime departureTime,
 		BigDecimal priceFcfa,

@@ -74,7 +74,7 @@ public class IntercityService {
 				vehicle.id(),
 				normalizeCity(request.departureCity()),
 				normalizeCity(request.destinationCity()),
-				normalizeOptional(request.departureQuarter()),
+				normalizeOptional(request.ptRamassage()),
 				request.departurePoint(),
 				request.destinationPoint(),
 				request.departureDate(),
@@ -147,8 +147,8 @@ public class IntercityService {
 			remainingSeats = totalSeats - bookedOrLocked;
 		}
 
-		String quarter = request.departureQuarter() != null ? normalizeOptional(request.departureQuarter())
-				: existing.departureQuarter();
+		String ptRamassage = request.ptRamassage() != null ? normalizeOptional(request.ptRamassage())
+				: existing.ptRamassage();
 		String instructions = request.instructions() != null ? blankToNull(request.instructions())
 				: existing.instructions();
 
@@ -156,7 +156,7 @@ public class IntercityService {
 				existing.id(),
 				departureCity,
 				destinationCity,
-				quarter,
+				ptRamassage,
 				request.departurePoint(),
 				request.destinationPoint(),
 				departureDate,
@@ -209,11 +209,11 @@ public class IntercityService {
 			suggestions.add(new WideningSuggestion("RAISE_MAX_PRICE",
 					"Augmenter le budget d'environ 20%.", query));
 		}
-		if (criteria.quarter() != null) {
+		if (criteria.ptRamassage() != null) {
 			Map<String, Object> query = baseSuggestedQuery(criteria);
-			query.remove("quarter");
-			suggestions.add(new WideningSuggestion("DROP_QUARTER",
-					"Retirer le filtre quartier.", query));
+			query.remove("ptRamassage");
+			suggestions.add(new WideningSuggestion("DROP_PT_RAMASSAGE",
+					"Retirer le filtre pt. ramassage.", query));
 		}
 		if (criteria.timeFrom() != null || criteria.timeTo() != null) {
 			Map<String, Object> query = baseSuggestedQuery(criteria);
@@ -226,7 +226,7 @@ public class IntercityService {
 			Map<String, Object> query = baseSuggestedQuery(criteria);
 			query.put("onlyAvailable", false);
 			suggestions.add(new WideningSuggestion("INCLUDE_FULL",
-					"Inclure les annonces completes.", query));
+					"Inclure les annonces complètes.", query));
 		}
 		if (suggestions.isEmpty()) {
 			suggestions.add(new WideningSuggestion("RELAX_DATE",
@@ -276,7 +276,7 @@ public class IntercityService {
 		}
 		if (profile.validationStatus() != ValidationStatus.VALIDATED) {
 			throw new IntercityException(IntercityErrorCode.ANNOUNCEMENT_FORBIDDEN,
-					"Seuls les profils valides peuvent publier des annonces.");
+					"Seuls les profils validés peuvent publier des annonces.");
 		}
 		return profile;
 	}
@@ -312,7 +312,7 @@ public class IntercityService {
 		}
 		if (totalSeats > vehicle.capacity()) {
 			throw new IntercityException(IntercityErrorCode.ANNOUNCEMENT_INVALID,
-					"Le nombre de places depasse la capacite du vehicule.");
+					"Le nombre de places dépasse la capacité du véhicule.");
 		}
 		return vehicle;
 	}
@@ -345,7 +345,7 @@ public class IntercityService {
 				criteria.maxPrice(),
 				criteria.timeFrom(),
 				criteria.timeTo(),
-				normalizeOptional(criteria.quarter()),
+				normalizeOptional(criteria.ptRamassage()),
 				criteria.onlyAvailable(),
 				sort,
 				criteria.nearLat(),
@@ -374,8 +374,8 @@ public class IntercityService {
 		if (criteria.timeTo() != null) {
 			query.put("timeTo", criteria.timeTo().toString());
 		}
-		if (criteria.quarter() != null) {
-			query.put("quarter", criteria.quarter());
+		if (criteria.ptRamassage() != null) {
+			query.put("ptRamassage", criteria.ptRamassage());
 		}
 		query.put("onlyAvailable", criteria.onlyAvailable());
 		return query;

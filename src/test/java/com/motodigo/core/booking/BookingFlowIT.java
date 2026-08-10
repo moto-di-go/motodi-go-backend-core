@@ -254,7 +254,7 @@ class BookingFlowIT {
 		Map<String, Object> body = new HashMap<>();
 		body.put("departureCity", "Douala");
 		body.put("destinationCity", "Yaounde");
-		body.put("departureQuarter", "Bonanjo");
+		body.put("ptRamassage", "Bonanjo");
 		body.put("departureDate", LocalDate.now().plusDays(5).toString());
 		body.put("departureTime", "08:30:00");
 		body.put("priceFcfa", 9000);

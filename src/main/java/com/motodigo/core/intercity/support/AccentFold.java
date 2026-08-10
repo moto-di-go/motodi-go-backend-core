@@ -4,7 +4,7 @@ import java.text.Normalizer;
 import java.util.Locale;
 
 /**
- * Folding casse + accents pour la recherche de villes/quartiers
+ * Folding casse + accents pour la recherche de villes/pt. ramassage
  * (ex. {@code Yaounde} == {@code Yaoundé}).
  */
 public final class AccentFold {

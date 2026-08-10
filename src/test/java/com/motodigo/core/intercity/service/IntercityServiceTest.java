@@ -128,7 +128,7 @@ class IntercityServiceTest {
 
 		assertThat(page.items()).isEmpty();
 		assertThat(page.wideningSuggestions()).extracting(WideningSuggestion::code)
-				.contains("RELAX_DATE", "RAISE_MAX_PRICE", "DROP_QUARTER", "DROP_TIME_RANGE", "INCLUDE_FULL");
+				.contains("RELAX_DATE", "RAISE_MAX_PRICE", "DROP_PT_RAMASSAGE", "DROP_TIME_RANGE", "INCLUDE_FULL");
 	}
 
 	@Test

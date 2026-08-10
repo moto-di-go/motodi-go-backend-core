@@ -61,7 +61,7 @@ public class VehicleService {
 
 		OfficialDocumentRecord photo = this.vehicleLookupRepository.findAcceptedVehiclePhoto(vehicleId)
 				.orElseThrow(() -> new IntercityException(IntercityErrorCode.VEHICLE_INVALID,
-						"Photo du vehicule introuvable."));
+						"Photo du véhicule introuvable."));
 		byte[] bytes = this.documentStorage.get(photo.encryptedStorageKey());
 		String mime = photo.mimeType() == null || photo.mimeType().isBlank() ? "image/jpeg" : photo.mimeType();
 		return new VehiclePhotoContent(bytes, mime, photo.fileName());
@@ -81,7 +81,7 @@ public class VehicleService {
 		}
 		if (profile.validationStatus() != ValidationStatus.VALIDATED) {
 			throw new IntercityException(IntercityErrorCode.ANNOUNCEMENT_FORBIDDEN,
-					"Seuls les profils valides peuvent gerer des vehicules.");
+					"Seuls les profils validés peuvent gérer des véhicules.");
 		}
 		return profile;
 	}
