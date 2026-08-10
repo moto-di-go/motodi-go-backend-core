@@ -83,7 +83,7 @@ public class IntercityService {
 				request.totalSeats(),
 				blankToNull(request.instructions()),
 				AnnouncementStatus.PUBLISHED);
-		return IntercityAnnouncementResponse.from(saved);
+		return toResponse(saved);
 	}
 
 	@Transactional(readOnly = true)
@@ -96,7 +96,7 @@ public class IntercityService {
 				&& announcement.status() != AnnouncementStatus.FULL) {
 			throw new IntercityException(IntercityErrorCode.ANNOUNCEMENT_NOT_FOUND);
 		}
-		return IntercityAnnouncementResponse.from(announcement);
+		return toResponse(announcement);
 	}
 
 	@Transactional(readOnly = true)
@@ -107,7 +107,7 @@ public class IntercityService {
 		boolean hasMore = rows.size() > size;
 		List<IntercityAnnouncementResponse> items = rows.stream()
 				.limit(size)
-				.map(IntercityAnnouncementResponse::from)
+				.map(this::toResponse)
 				.toList();
 		return new IntercityAnnouncementMinePageResponse(items, page, size, hasMore);
 	}
@@ -166,7 +166,7 @@ public class IntercityService {
 				remainingSeats,
 				vehicleId,
 				instructions);
-		return IntercityAnnouncementResponse.from(updated);
+		return toResponse(updated);
 	}
 
 	@Transactional
@@ -186,7 +186,7 @@ public class IntercityService {
 		boolean hasMore = rows.size() > normalized.size();
 		List<IntercityAnnouncementResponse> items = rows.stream()
 				.limit(normalized.size())
-				.map(IntercityAnnouncementResponse::from)
+				.map(this::toResponse)
 				.toList();
 		List<WideningSuggestion> suggestions = items.isEmpty() ? buildWideningSuggestions(normalized) : List.of();
 		return new IntercityAnnouncementSearchPageResponse(items, normalized.page(), normalized.size(), hasMore,
@@ -243,9 +243,23 @@ public class IntercityService {
 			throw new IntercityException(IntercityErrorCode.ANNOUNCEMENT_NOT_MODIFIABLE);
 		}
 		if (existing.status() == target) {
-			return IntercityAnnouncementResponse.from(existing);
+			return toResponse(existing);
 		}
-		return IntercityAnnouncementResponse.from(this.announcementRepository.updateStatus(existing.id(), target));
+		return toResponse(this.announcementRepository.updateStatus(existing.id(), target));
+	}
+
+	IntercityAnnouncementResponse toResponse(IntercityAnnouncementRecord record) {
+		ProfileRecord publisher = this.profileRepository.findById(record.publisherProfileId()).orElse(null);
+		VehicleRecord vehicle = record.vehicleId() == null ? null
+				: this.vehicleLookupRepository.findById(record.vehicleId()).orElse(null);
+		Double lat = null;
+		Double lon = null;
+		double[] coords = this.announcementRepository.findDepartureCoords(record.id()).orElse(null);
+		if (coords != null) {
+			lat = coords[0];
+			lon = coords[1];
+		}
+		return IntercityAnnouncementResponse.from(record, publisher, vehicle, lat, lon);
 	}
 
 	private ProfileRecord requirePublisherProfile(UUID userId, UUID activeProfileId) {

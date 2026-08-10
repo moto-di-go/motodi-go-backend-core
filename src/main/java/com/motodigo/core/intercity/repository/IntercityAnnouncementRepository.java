@@ -20,6 +20,7 @@ import com.motodigo.core.intercity.dto.GeoPointRequest;
 import com.motodigo.core.intercity.entity.AnnouncementSort;
 import com.motodigo.core.intercity.entity.AnnouncementStatus;
 import com.motodigo.core.intercity.entity.IntercityAnnouncementRecord;
+import com.motodigo.core.intercity.support.AccentFold;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -82,6 +83,26 @@ public class IntercityAnnouncementRepository {
 
 	public Optional<IntercityAnnouncementRecord> findById(UUID id) {
 		return this.jdbcTemplate.query(SELECT_BASE + " WHERE id = ?", this::mapAnnouncement, id).stream().findFirst();
+	}
+
+	public Optional<double[]> findDepartureCoords(UUID id) {
+		return this.jdbcTemplate.query("""
+				SELECT ST_Y(departure_point_geom::geometry) AS lat, ST_X(departure_point_geom::geometry) AS lon
+				FROM intercity_announcements
+				WHERE id = ?
+				  AND departure_point_geom IS NOT NULL
+				""", (rs, rowNum) -> new double[] { rs.getDouble("lat"), rs.getDouble("lon") }, id).stream().findFirst();
+	}
+
+	public boolean existsPublishedOrFullWithVehicle(UUID vehicleId) {
+		Boolean exists = this.jdbcTemplate.queryForObject("""
+				SELECT EXISTS (
+				  SELECT 1 FROM intercity_announcements
+				  WHERE vehicle_id = ?
+				    AND status IN ('PUBLISHED', 'FULL')
+				)
+				""", Boolean.class, vehicleId);
+		return Boolean.TRUE.equals(exists);
 	}
 
 	/**
@@ -214,13 +235,14 @@ public class IntercityAnnouncementRepository {
 	}
 
 	private static void appendSearchFilters(StringBuilder sql, List<Object> params, AnnouncementSearchCriteria criteria) {
+		// Comparaison case/accent-insensitive via translate SQL + fold Java (sans extension unaccent).
 		if (criteria.departureCity() != null) {
-			sql.append(" AND lower(a.departure_city) = lower(?)");
-			params.add(criteria.departureCity());
+			sql.append(" AND ").append(foldCitySql("a.departure_city")).append(" = ?");
+			params.add(AccentFold.fold(criteria.departureCity()));
 		}
 		if (criteria.destinationCity() != null) {
-			sql.append(" AND lower(a.destination_city) = lower(?)");
-			params.add(criteria.destinationCity());
+			sql.append(" AND ").append(foldCitySql("a.destination_city")).append(" = ?");
+			params.add(AccentFold.fold(criteria.destinationCity()));
 		}
 		if (criteria.date() != null) {
 			sql.append(" AND a.departure_date = ?");
@@ -239,12 +261,19 @@ public class IntercityAnnouncementRepository {
 			params.add(Time.valueOf(criteria.timeTo()));
 		}
 		if (criteria.quarter() != null) {
-			sql.append(" AND lower(a.departure_quarter) = lower(?)");
-			params.add(criteria.quarter());
+			sql.append(" AND ").append(foldCitySql("a.departure_quarter")).append(" = ?");
+			params.add(AccentFold.fold(criteria.quarter()));
 		}
 		if (criteria.onlyAvailable()) {
 			sql.append(" AND a.remaining_seats > 0 AND a.status = 'PUBLISHED'");
 		}
+	}
+
+	/** Expr SQL : lower + suppression accents FR courants. */
+	private static String foldCitySql(String column) {
+		return "translate(lower(" + column + "), "
+				+ "'àáâãäåèéêëìíîïòóôõöùúûüýÿçñ',"
+				+ "'aaaaaaeeeeiiiiooooouuuuyycn')";
 	}
 
 	private static void appendOrderBy(StringBuilder sql, List<Object> params, AnnouncementSearchCriteria criteria) {

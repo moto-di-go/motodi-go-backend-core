@@ -91,7 +91,7 @@ class BookingFlowIT {
 		AuthTokenResponse passenger = registerPassenger("+237699300301", "Secret1234");
 		var created = exchange(passenger.accessToken(), HttpMethod.POST,
 				"/api/v1/intercity/announcements/" + announcementId + "/bookings",
-				Map.of("seatsRequested", 1), Map.class);
+				Map.of("seatsRequested", 1, "contactPhone", "+237699300399"), Map.class);
 		assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
 		assertThat(created.getBody()).isNotNull();
 		assertThat(created.getBody().get("status")).isEqualTo("PENDING");
@@ -146,7 +146,7 @@ class BookingFlowIT {
 		AuthTokenResponse passenger = registerPassenger("+237699300311", "Secret1234");
 		var refused = exchange(passenger.accessToken(), HttpMethod.POST,
 				"/api/v1/intercity/announcements/" + announcementId + "/bookings",
-				Map.of("seatsRequested", 1), Map.class);
+				Map.of("seatsRequested", 1, "contactPhone", "+237699300399"), Map.class);
 		assertThat(refused.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
 		assertThat(refused.getBody().get("errorCode")).isEqualTo("BOOKING_NOT_AVAILABLE");
 	}
@@ -245,7 +245,7 @@ class BookingFlowIT {
 	private UUID createPendingBooking(String accessToken, UUID announcementId) {
 		var created = exchange(accessToken, HttpMethod.POST,
 				"/api/v1/intercity/announcements/" + announcementId + "/bookings",
-				Map.of("seatsRequested", 1), Map.class);
+				Map.of("seatsRequested", 1, "contactPhone", "+237699300399"), Map.class);
 		assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
 		return UUID.fromString(String.valueOf(created.getBody().get("id")));
 	}

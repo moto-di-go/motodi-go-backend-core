@@ -80,7 +80,7 @@ class IntercityAnnouncementFlowIT {
 
 		Map<String, Object> createBody = new HashMap<>();
 		createBody.put("departureCity", "Douala");
-		createBody.put("destinationCity", "Yaounde");
+		createBody.put("destinationCity", "Yaoundé");
 		createBody.put("departureQuarter", "Bonanjo");
 		createBody.put("departureDate", LocalDate.now().plusDays(5).toString());
 		createBody.put("departureTime", "08:30:00");
@@ -123,6 +123,8 @@ class IntercityAnnouncementFlowIT {
 		assertThat(items).hasSize(1);
 		assertThat(items.get(0).get("remainingSeats")).isEqualTo(14);
 		assertThat(items.get(0).get("id")).isEqualTo(announcementId.toString());
+		// Accent-insensitive: query "Yaounde" matches stored "Yaoundé".
+		assertThat(items.get(0).get("destinationCity")).isEqualTo("Yaoundé");
 
 		var emptySearch = exchange(passenger.accessToken(), HttpMethod.GET,
 				"/api/v1/intercity/announcements?departureCity=Douala&destinationCity=Yaounde&date="

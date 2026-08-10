@@ -87,7 +87,8 @@ public class BookingService {
 		Instant expiresAt = now.plus(this.bookingProperties.confirmationTtl());
 		BookingRecord created;
 		try {
-			created = this.bookingRepository.insert(announcementId, passenger.id(), request.seatsRequested(), expiresAt);
+			created = this.bookingRepository.insert(announcementId, passenger.id(), request.seatsRequested(),
+					request.contactPhone().trim(), expiresAt);
 		}
 		catch (DuplicateKeyException ex) {
 			throw new BookingException(BookingErrorCode.BOOKING_DUPLICATE);
