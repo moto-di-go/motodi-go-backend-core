@@ -5,9 +5,12 @@ import java.util.stream.Collectors;
 
 import com.motodigo.core.auth.dto.ErrorResponse;
 import com.motodigo.core.booking.exception.BookingException;
+import com.motodigo.core.geo.exception.GeoException;
 import com.motodigo.core.intercity.exception.IntercityException;
 import com.motodigo.core.kyc.exception.KycException;
+import com.motodigo.core.notification.exception.NotificationException;
 import com.motodigo.core.payment.exception.PaymentException;
+import com.motodigo.core.pricing.exception.PricingException;
 import com.motodigo.core.wallet.exception.WalletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
@@ -61,6 +64,22 @@ public class AuthExceptionHandler {
 
 	@ExceptionHandler(BookingException.class)
 	ResponseEntity<ErrorResponse> handleBookingException(BookingException exception, HttpServletRequest request) {
+		return error(exception.errorCode().status(), exception.errorCode().name(), exception.getMessage(), request);
+	}
+
+	@ExceptionHandler(NotificationException.class)
+	ResponseEntity<ErrorResponse> handleNotificationException(NotificationException exception,
+			HttpServletRequest request) {
+		return error(exception.errorCode().status(), exception.errorCode().name(), exception.getMessage(), request);
+	}
+
+	@ExceptionHandler(GeoException.class)
+	ResponseEntity<ErrorResponse> handleGeoException(GeoException exception, HttpServletRequest request) {
+		return error(exception.errorCode().status(), exception.errorCode().name(), exception.getMessage(), request);
+	}
+
+	@ExceptionHandler(PricingException.class)
+	ResponseEntity<ErrorResponse> handlePricingException(PricingException exception, HttpServletRequest request) {
 		return error(exception.errorCode().status(), exception.errorCode().name(), exception.getMessage(), request);
 	}
 

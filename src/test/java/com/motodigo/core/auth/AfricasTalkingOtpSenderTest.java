@@ -49,9 +49,33 @@ class AfricasTalkingOtpSenderTest {
 	}
 
 	@Test
+	void acceptsProcessedQueuedAndSentStatusCodes() throws Exception {
+		for (int statusCode : new int[] {100, 101, 102}) {
+			startServer(200, """
+					{"SMSMessageData":{"Message":"Sent","Recipients":[{"statusCode":%d,"number":"+237699001122","status":"Success"}]}}
+					""".formatted(statusCode));
+			AfricasTalkingOtpSender sender = new AfricasTalkingOtpSender(properties());
+			sender.sendOtp("+237699001122", "Votre code est 123456");
+			assertThat(this.capturedRequests.poll(2, TimeUnit.SECONDS)).isNotNull();
+			stopServer();
+		}
+	}
+
+	@Test
 	void rejectsNonSuccessfulRecipientStatus() throws Exception {
 		startServer(200, """
 				{"SMSMessageData":{"Message":"Rejected","Recipients":[{"statusCode":403,"number":"+237699001122","status":"Invalid"}]}}
+				""");
+		AfricasTalkingOtpSender sender = new AfricasTalkingOtpSender(properties());
+
+		assertThatThrownBy(() -> sender.sendOtp("+237699001122", "Votre code est 123456"))
+				.isInstanceOf(AuthException.class);
+	}
+
+	@Test
+	void rejectsInsufficientBalanceStatus() throws Exception {
+		startServer(200, """
+				{"SMSMessageData":{"Message":"Rejected","Recipients":[{"statusCode":405,"number":"+237699001122","status":"InsufficientBalance"}]}}
 				""");
 		AfricasTalkingOtpSender sender = new AfricasTalkingOtpSender(properties());
 

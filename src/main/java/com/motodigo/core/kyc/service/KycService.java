@@ -47,6 +47,7 @@ import org.springframework.web.multipart.MultipartFile;
 public class KycService {
 
 	private static final long MAX_FILE_SIZE_BYTES = 5L * 1024L * 1024L;
+	private static final List<DocumentType> PASSENGER_REQUIRED_DOCUMENTS = List.of(DocumentType.CNI);
 	private static final List<DocumentType> SELF_SERVICE_REQUIRED_DOCUMENTS = List.of(
 			DocumentType.CNI,
 			DocumentType.PROFILE_PHOTO,
@@ -295,7 +296,9 @@ public class KycService {
 	}
 
 	private static void requireEligibleProfile(ProfileType profileType) {
-		if (profileType != ProfileType.MOTOTAXI && profileType != ProfileType.TRANSPORTER) {
+		if (profileType != ProfileType.PASSENGER
+				&& profileType != ProfileType.MOTOTAXI
+				&& profileType != ProfileType.TRANSPORTER) {
 			throw new KycException(KycErrorCode.KYC_PROFILE_NOT_ELIGIBLE);
 		}
 	}
@@ -360,6 +363,9 @@ public class KycService {
 
 	private static List<DocumentType> requiredDocumentTypes(ProfileType profileType) {
 		requireEligibleProfile(profileType);
+		if (profileType == ProfileType.PASSENGER) {
+			return PASSENGER_REQUIRED_DOCUMENTS;
+		}
 		if (profileType == ProfileType.TRANSPORTER) {
 			return TRANSPORTER_REQUIRED_DOCUMENTS;
 		}

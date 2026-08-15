@@ -377,14 +377,20 @@ public class KycRepository {
 	}
 
 	private static String notificationTitle(KycDecision decision) {
-		return decision == KycDecision.VALIDATE ? "Profil KYC valide" : "Profil KYC rejete";
+		return decision == KycDecision.VALIDATE ? "Profil validé" : "Document à corriger";
 	}
 
 	private static String notificationBody(KycDecision decision, String displayName, String reason) {
 		if (decision == KycDecision.VALIDATE) {
-			return "Votre profil " + displayName + " a ete valide.";
+			if (displayName == null || displayName.isBlank()) {
+				return "Vos fonctions sont maintenant actives.";
+			}
+			return "Votre profil " + displayName + " est validé.";
 		}
-		return "Votre profil " + displayName + " a ete rejete. Motif: " + reason;
+		if (reason == null || reason.isBlank()) {
+			return "Un document a été rejeté.";
+		}
+		return "Votre document a été rejeté (" + reason + ").";
 	}
 
 	private static String notificationMetadata(KycDecision decision, String reason) {

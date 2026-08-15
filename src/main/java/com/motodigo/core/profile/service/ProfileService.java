@@ -86,7 +86,7 @@ public class ProfileService {
 	}
 
 	private static ValidationStatus initialStatus(ProfileType type) {
-		return type == ProfileType.PASSENGER ? ValidationStatus.VALIDATED : ValidationStatus.PENDING;
+		return ValidationStatus.PENDING;
 	}
 
 	private static void validateCreate(CreateProfileRequest request) {

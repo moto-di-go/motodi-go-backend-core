@@ -117,6 +117,20 @@ class BookingServiceTest {
 	}
 
 	@Test
+	void requestBookingRejectedWhenPassengerKycNotValidated() {
+		when(this.profileRepository.findOwnedById(this.passengerUserId, this.passengerProfileId))
+				.thenReturn(Optional.of(profile(this.passengerProfileId, this.passengerUserId, ProfileType.PASSENGER,
+						ValidationStatus.PENDING)));
+
+		assertThatThrownBy(() -> this.service.requestBooking(this.passengerUserId, this.passengerProfileId,
+				this.announcementId, new CreateBookingRequest(1, "+237670000001")))
+				.isInstanceOf(BookingException.class)
+				.extracting(ex -> ((BookingException) ex).errorCode())
+				.isEqualTo(BookingErrorCode.BOOKING_KYC_REQUIRED);
+		verify(this.announcementSeatInventory, never()).findById(any());
+	}
+
+	@Test
 	void requestBookingCreatesPendingAndNotifies() {
 		stubPassenger();
 		stubForeignPublisher();
@@ -322,7 +336,11 @@ class BookingServiceTest {
 	}
 
 	private ProfileRecord profile(UUID profileId, UUID userId, ProfileType type) {
-		return new ProfileRecord(profileId, userId, type, ValidationStatus.VALIDATED, "Profil", null, BigDecimal.ZERO,
+		return profile(profileId, userId, type, ValidationStatus.VALIDATED);
+	}
+
+	private ProfileRecord profile(UUID profileId, UUID userId, ProfileType type, ValidationStatus status) {
+		return new ProfileRecord(profileId, userId, type, status, "Profil", null, BigDecimal.ZERO,
 				true, FIXED_NOW, FIXED_NOW, null, null, null, null, null, null);
 	}
 }

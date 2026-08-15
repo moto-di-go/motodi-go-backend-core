@@ -217,6 +217,16 @@ public class ProfileRepository {
 		}
 	}
 
+	public void updateAvailability(UUID profileId, DriverAvailability availability, boolean gpsConsent) {
+		this.jdbcTemplate.update("""
+				UPDATE driver_profiles
+				SET availability = ?,
+				    gps_consent = ?,
+				    last_availability_change_at = now()
+				WHERE profile_id = ?
+				""", availability.name(), gpsConsent, profileId);
+	}
+
 	private void insertDriver(UUID profileId, Boolean gpsConsent) {
 		this.jdbcTemplate.update("""
 				INSERT INTO driver_profiles (profile_id, gps_consent)

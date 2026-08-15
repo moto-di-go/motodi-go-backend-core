@@ -1,0 +1,8 @@
+motodigo:
+  otp:
+    provider: africas-talking
+  africas-talking:
+    base-url: ${AFRICAS_TALKING_BASE_URL:https://api.africastalking.com}
+    enqueue: ${AFRICAS_TALKING_ENQUEUE:1}
+    connect-timeout-ms: ${AFRICAS_TALKING_CONNECT_TIMEOUT_MS:3000}
+    read-timeout-ms: ${AFRICAS_TALKING_READ_TIMEOUT_MS:5000}
