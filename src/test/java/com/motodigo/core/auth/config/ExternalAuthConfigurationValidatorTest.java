@@ -66,7 +66,7 @@ class ExternalAuthConfigurationValidatorTest {
 				username,
 				apiKey,
 				senderId,
-				1,
+				true,
 				3000,
 				5000);
 		return new ExternalAuthConfigurationValidator(environment, authProperties, otpProperties,

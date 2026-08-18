@@ -38,7 +38,7 @@ motodigo:
     username: ${AFRICAS_TALKING_USERNAME:}
     api-key: ${AFRICAS_TALKING_API_KEY:}
     sender-id: ${AFRICAS_TALKING_SENDER_ID:}
-    enqueue: ${AFRICAS_TALKING_ENQUEUE:1}
+    enqueue: ${AFRICAS_TALKING_ENQUEUE:true}
     connect-timeout-ms: ${AFRICAS_TALKING_CONNECT_TIMEOUT_MS:3000}
     read-timeout-ms: ${AFRICAS_TALKING_READ_TIMEOUT_MS:5000}
   kyc:
