@@ -8,5 +8,6 @@ public record RoutePreviewRequest(
 		@NotNull @DecimalMin("-90") @DecimalMax("90") Double originLat,
 		@NotNull @DecimalMin("-180") @DecimalMax("180") Double originLon,
 		@NotNull @DecimalMin("-90") @DecimalMax("90") Double destinationLat,
-		@NotNull @DecimalMin("-180") @DecimalMax("180") Double destinationLon) {
+		@NotNull @DecimalMin("-180") @DecimalMax("180") Double destinationLon,
+		String costing) {
 }

@@ -3,10 +3,12 @@ package com.motodigo.core.geo.service;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 import com.motodigo.core.geo.client.ValhallaClient;
 import com.motodigo.core.geo.client.ValhallaPath;
+import com.motodigo.core.geo.config.GeoProperties;
 import com.motodigo.core.geo.entity.BuiltRoute;
 import com.motodigo.core.geo.entity.BuiltRouteAlternative;
 import com.motodigo.core.geo.entity.BuiltRouteOption;
@@ -23,16 +25,19 @@ public class RoutingFacade implements RouteEngine {
 
 	public static final String ENGINE_VALHALLA = "VALHALLA";
 	public static final String ENGINE_LOCAL = "LOCAL";
+	public static final String ENGINE_DIRECT = "DIRECT";
 
 	private final RouteBuilder routeBuilder;
 	private final ValhallaClient valhallaClient;
 	private final RoadNetworkRepository roadNetworkRepository;
+	private final GeoProperties geoProperties;
 
 	public RoutingFacade(RouteBuilder routeBuilder, ValhallaClient valhallaClient,
-			RoadNetworkRepository roadNetworkRepository) {
+			RoadNetworkRepository roadNetworkRepository, GeoProperties geoProperties) {
 		this.routeBuilder = routeBuilder;
 		this.valhallaClient = valhallaClient;
 		this.roadNetworkRepository = roadNetworkRepository;
+		this.geoProperties = geoProperties;
 	}
 
 	@Override
@@ -41,13 +46,17 @@ public class RoutingFacade implements RouteEngine {
 	}
 
 	public RoutedResult preview(double originLat, double originLon, double destLat, double destLon) {
-		List<ValhallaPath> paths = this.valhallaClient.route(originLat, originLon, destLat, destLon);
+		return preview(originLat, originLon, destLat, destLon, null);
+	}
+
+	public RoutedResult preview(double originLat, double originLon, double destLat, double destLon, String costing) {
+		List<ValhallaPath> paths = this.valhallaClient.route(originLat, originLon, destLat, destLon, costing);
 		if (paths.isEmpty()) {
-			return new RoutedResult(this.routeBuilder.buildRoute(originLat, originLon, destLat, destLon), ENGINE_LOCAL);
+			return fallback(originLat, originLon, destLat, destLon);
 		}
 		List<BuiltRouteOption> options = enrich(toOptions(paths));
 		if (options.isEmpty()) {
-			return new RoutedResult(this.routeBuilder.buildRoute(originLat, originLon, destLat, destLon), ENGINE_LOCAL);
+			return fallback(originLat, originLon, destLat, destLon);
 		}
 		BuiltRouteOption primary = options.getFirst();
 		List<BlockingLayer> blockers = this.roadNetworkRepository.findBlockingLayers(primary.polylineWkt());
@@ -64,6 +73,35 @@ public class RoutingFacade implements RouteEngine {
 	}
 
 	public record RoutedResult(BuiltRoute route, String engine) {
+	}
+
+	private RoutedResult fallback(double originLat, double originLon, double destLat, double destLon) {
+		boolean bothInYaounde = this.geoProperties.isInsideYaounde(originLat, originLon)
+				&& this.geoProperties.isInsideYaounde(destLat, destLon);
+		if (bothInYaounde) {
+			return new RoutedResult(this.routeBuilder.buildRoute(originLat, originLon, destLat, destLon), ENGINE_LOCAL);
+		}
+		return new RoutedResult(directRoute(originLat, originLon, destLat, destLon), ENGINE_DIRECT);
+	}
+
+	static BuiltRoute directRoute(double originLat, double originLon, double destLat, double destLon) {
+		String wkt = String.format(Locale.US, "LINESTRING(%f %f, %f %f)", originLon, originLat, destLon, destLat);
+		double km = Math.round(haversineKm(originLat, originLon, destLat, destLon) * 1000d) / 1000d;
+		int minutes = Math.max(1, (int) Math.round(km));
+		BuiltRouteOption option = new BuiltRouteOption(BuiltRouteOption.RECOMMENDED, "Itinéraire conseillé", true, km,
+				minutes, wkt, "DIRECT");
+		return new BuiltRoute(UUID.randomUUID(), originLat, originLon, destLat, destLon, wkt, km, minutes, "PROPOSED",
+				List.of(), List.of(option));
+	}
+
+	private static double haversineKm(double lat1, double lon1, double lat2, double lon2) {
+		double earth = 6371;
+		double dLat = Math.toRadians(lat2 - lat1);
+		double dLon = Math.toRadians(lon2 - lon1);
+		double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+				+ Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
+				* Math.sin(dLon / 2) * Math.sin(dLon / 2);
+		return earth * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 	}
 
 	public ValhallaPath match(List<double[]> latLonPoints) {

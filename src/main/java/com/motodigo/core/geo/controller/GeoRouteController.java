@@ -34,7 +34,7 @@ class GeoRouteController {
 	@PostMapping("/preview")
 	ResponseEntity<RoutePreviewResponse> preview(@Valid @RequestBody RoutePreviewRequest request) {
 		RoutedResult result = this.routingFacade.preview(request.originLat(), request.originLon(),
-				request.destinationLat(), request.destinationLon());
+				request.destinationLat(), request.destinationLon(), request.costing());
 		return ResponseEntity.ok(RoutePreviewResponse.from(result.route(), result.engine()));
 	}
 

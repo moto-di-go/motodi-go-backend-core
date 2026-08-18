@@ -42,12 +42,16 @@ public class ValhallaClient {
 	}
 
 	public List<ValhallaPath> route(double originLat, double originLon, double destLat, double destLon) {
+		return route(originLat, originLon, destLat, destLon, null);
+	}
+
+	public List<ValhallaPath> route(double originLat, double originLon, double destLat, double destLon, String costing) {
 		if (!this.properties.valhallaReady()) {
 			return List.of();
 		}
-		List<ValhallaPath> paths = routeWithCosting(originLat, originLon, destLat, destLon,
-				this.properties.valhallaCosting());
-		if (paths.isEmpty() && !"auto".equalsIgnoreCase(this.properties.valhallaCosting())) {
+		String primary = costing == null || costing.isBlank() ? this.properties.valhallaCosting() : costing.trim();
+		List<ValhallaPath> paths = routeWithCosting(originLat, originLon, destLat, destLon, primary);
+		if (paths.isEmpty() && !"auto".equalsIgnoreCase(primary)) {
 			paths = routeWithCosting(originLat, originLon, destLat, destLon, "auto");
 		}
 		return paths;
