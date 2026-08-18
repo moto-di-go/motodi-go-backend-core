@@ -61,6 +61,32 @@ class UrbanPlaceServiceTest {
 	}
 
 	@Test
+	void geocodeFindsNkolbissonWithoutSpacesOrHyphens() {
+		UrbanPlaceRecord nkolbisson = place("Nkolbisson", 3.8750, 11.4580, "NEIGHBORHOOD", 125);
+		when(this.urbanPlaceRepository.findAllInServiceArea())
+				.thenReturn(List.of(BASTOS, nkolbisson));
+
+		assertThat(this.urbanPlaceService.geocode("Nkolbisson")).extracting(place -> place.label())
+				.contains("Nkolbisson");
+		assertThat(this.urbanPlaceService.geocode("nkol bisson")).extracting(place -> place.label())
+				.contains("Nkolbisson");
+		assertThat(this.urbanPlaceService.geocode("Nkol-Bisson")).extracting(place -> place.label())
+				.contains("Nkolbisson");
+	}
+
+	@Test
+	void geocodeFiltersCitiesByKind() {
+		UrbanPlaceRecord yaounde = place("Yaoundé", 3.8667, 11.5167, "CITY", 10);
+		UrbanPlaceRecord douala = place("Douala", 4.0511, 9.7679, "CITY", 20);
+		when(this.urbanPlaceRepository.findByKind("CITY")).thenReturn(List.of(yaounde, douala));
+
+		assertThat(this.urbanPlaceService.geocode("yao", "CITY")).extracting(place -> place.label())
+				.contains("Yaoundé");
+		assertThat(this.urbanPlaceService.geocode("dou", "CITY")).extracting(place -> place.label())
+				.contains("Douala");
+	}
+
+	@Test
 	void reverseReturnsNearestSeedToBastos() {
 		when(this.urbanPlaceRepository.findAllInServiceArea())
 				.thenReturn(List.of(BASTOS, NLONGKAK, MARCHE, AEROPORT));

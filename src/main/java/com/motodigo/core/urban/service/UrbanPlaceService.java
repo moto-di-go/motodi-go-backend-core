@@ -37,11 +37,19 @@ public class UrbanPlaceService {
 
 	@Transactional(readOnly = true)
 	public List<UrbanPlaceResponse> geocode(String query) {
+		return geocode(query, null);
+	}
+
+	@Transactional(readOnly = true)
+	public List<UrbanPlaceResponse> geocode(String query, String kind) {
 		String folded = AccentFold.fold(query);
 		if (folded == null) {
 			return List.of();
 		}
-		return search(folded, this.urbanPlaceRepository.findAllInServiceArea());
+		List<UrbanPlaceRecord> places = kind == null || kind.isBlank()
+				? this.urbanPlaceRepository.findAllInServiceArea()
+				: this.urbanPlaceRepository.findByKind(kind.trim().toUpperCase());
+		return search(folded, places);
 	}
 
 	@Transactional(readOnly = true)
@@ -75,11 +83,11 @@ public class UrbanPlaceService {
 		if (foldedLabel == null) {
 			return false;
 		}
-		if (foldedLabel.contains(foldedQuery)) {
+		if (foldedLabel.contains(foldedQuery) || compact(foldedLabel).contains(compact(foldedQuery))) {
 			return true;
 		}
 		for (String word : foldedLabel.split(" ")) {
-			if (word.startsWith(foldedQuery)) {
+			if (word.startsWith(foldedQuery) || compact(word).startsWith(compact(foldedQuery))) {
 				return true;
 			}
 			if (foldedQuery.length() >= 4 && levenshtein(word, foldedQuery) <= 1) {
@@ -89,16 +97,21 @@ public class UrbanPlaceService {
 		return foldedQuery.length() >= 4 && levenshtein(foldedLabel, foldedQuery) <= 2;
 	}
 
+	static String compact(String value) {
+		return value.replace("-", "").replace(" ", "").replace("'", "");
+	}
+
 	private static int prefixRank(UrbanPlaceRecord place, String foldedQuery) {
 		String foldedLabel = AccentFold.fold(place.label());
-		if (foldedLabel != null && foldedLabel.startsWith(foldedQuery)) {
+		if (foldedLabel != null && (foldedLabel.startsWith(foldedQuery)
+				|| compact(foldedLabel).startsWith(compact(foldedQuery)))) {
 			return 0;
 		}
 		return 1;
 	}
 
 	private static UrbanPlaceResponse toResponse(UrbanPlaceRecord place) {
-		return new UrbanPlaceResponse(place.id(), place.label(), place.lat(), place.lon(), place.kind());
+		return UrbanPlaceResponse.local(place.id(), place.label(), place.lat(), place.lon(), place.kind());
 	}
 
 	static int levenshtein(String left, String right) {

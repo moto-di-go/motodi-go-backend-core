@@ -12,3 +12,6 @@ motodigo:
     mobile-money:
       mode: stub
       pending-ttl: 30m
+  geostack:
+    photon-enabled: false
+    valhalla-enabled: false

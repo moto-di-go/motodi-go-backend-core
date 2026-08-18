@@ -62,6 +62,15 @@ motodigo:
     yaounde-max-lon: ${GEO_YAOUNDE_MAX_LON:11.64}
     routes-yaounde-path: ${GIS_ROUTES_YAOUNDE_PATH:./data/gis/routes_yaounde.gpkg}
     retention-cron: ${GEO_RETENTION_CRON:0 15 * * * *}
+  geostack:
+    photon-enabled: ${GEO_STACK_PHOTON_ENABLED:false}
+    photon-base-url: ${GEO_STACK_PHOTON_BASE_URL:http://localhost:2322}
+    photon-timeout-ms: ${GEO_STACK_PHOTON_TIMEOUT_MS:1200}
+    valhalla-enabled: ${GEO_STACK_VALHALLA_ENABLED:false}
+    valhalla-base-url: ${GEO_STACK_VALHALLA_BASE_URL:http://localhost:8002}
+    valhalla-timeout-ms: ${GEO_STACK_VALHALLA_TIMEOUT_MS:2500}
+    valhalla-costing: ${GEO_STACK_VALHALLA_COSTING:motorcycle}
+    valhalla-alternates: ${GEO_STACK_VALHALLA_ALTERNATES:2}
   pricing:
     fare-ttl-minutes: ${PRICING_FARE_TTL_MINUTES:210}
     night-start: ${PRICING_NIGHT_START:22:00}

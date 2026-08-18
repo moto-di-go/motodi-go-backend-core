@@ -21,6 +21,7 @@ import com.motodigo.core.profile.entity.ProfileRecord;
 import com.motodigo.core.profile.entity.ProfileType;
 import com.motodigo.core.profile.entity.ValidationStatus;
 import com.motodigo.core.profile.repository.ProfileRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -36,6 +37,7 @@ public class GeoService {
 	private final GeoProperties properties;
 	private final Clock clock;
 
+	@Autowired
 	public GeoService(ProfileRepository profileRepository, DriverPositionRepository driverPositionRepository,
 			ApplicationEventPublisher eventPublisher, GeoProperties properties) {
 		this(profileRepository, driverPositionRepository, eventPublisher, properties, Clock.systemUTC());

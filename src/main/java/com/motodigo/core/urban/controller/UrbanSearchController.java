@@ -1,5 +1,6 @@
 package com.motodigo.core.urban.controller;
 
+import com.motodigo.core.urban.service.PlaceSearchFacade;
 import com.motodigo.core.urban.service.UrbanPlaceService;
 import com.motodigo.core.urban.service.UrbanSearchService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -17,9 +18,13 @@ class UrbanSearchController {
 	private final UrbanSearchService urbanSearchService;
 	private final UrbanPlaceService urbanPlaceService;
 
-	UrbanSearchController(UrbanSearchService urbanSearchService, UrbanPlaceService urbanPlaceService) {
+	private final PlaceSearchFacade placeSearchFacade;
+
+	UrbanSearchController(UrbanSearchService urbanSearchService, UrbanPlaceService urbanPlaceService,
+			PlaceSearchFacade placeSearchFacade) {
 		this.urbanSearchService = urbanSearchService;
 		this.urbanPlaceService = urbanPlaceService;
+		this.placeSearchFacade = placeSearchFacade;
 	}
 
 	@GetMapping("/drivers/nearby")
@@ -37,13 +42,26 @@ class UrbanSearchController {
 		return ResponseEntity.ok(this.urbanPlaceService.popular());
 	}
 
+	@GetMapping("/places/suggest")
+	ResponseEntity<?> suggestPlaces(
+			@RequestParam(name = "q", required = false) String query,
+			@RequestParam(required = false) Double lat,
+			@RequestParam(required = false) Double lon,
+			@RequestParam(required = false) String kind) {
+		return ResponseEntity.ok(this.placeSearchFacade.suggest(query, lat, lon, kind));
+	}
+
 	@GetMapping("/geocode")
-	ResponseEntity<?> geocode(@RequestParam(name = "q", required = false) String query) {
-		return ResponseEntity.ok(this.urbanPlaceService.geocode(query));
+	ResponseEntity<?> geocode(
+			@RequestParam(name = "q", required = false) String query,
+			@RequestParam(required = false) Double lat,
+			@RequestParam(required = false) Double lon,
+			@RequestParam(required = false) String kind) {
+		return ResponseEntity.ok(this.placeSearchFacade.suggest(query, lat, lon, kind));
 	}
 
 	@GetMapping("/reverse")
 	ResponseEntity<?> reverse(@RequestParam double lat, @RequestParam double lon) {
-		return ResponseEntity.ok(this.urbanPlaceService.reverse(lat, lon));
+		return ResponseEntity.ok(this.placeSearchFacade.reverse(lat, lon));
 	}
 }

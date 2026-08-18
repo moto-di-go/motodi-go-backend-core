@@ -26,7 +26,7 @@ import org.springframework.stereotype.Service;
 
 @Service
 @ConditionalOnProperty(prefix = "spring.datasource", name = "url")
-public class RouteBuilder {
+public class RouteBuilder implements RouteEngine {
 
 	static final double DEGRADED_EDGE_PENALTY = 12d;
 
@@ -38,6 +38,7 @@ public class RouteBuilder {
 		this.properties = properties;
 	}
 
+	@Override
 	public BuiltRoute buildRoute(double originLat, double originLon, double destLat, double destLon) {
 		if (!this.properties.isInsideYaounde(originLat, originLon)
 				|| !this.properties.isInsideYaounde(destLat, destLon)) {

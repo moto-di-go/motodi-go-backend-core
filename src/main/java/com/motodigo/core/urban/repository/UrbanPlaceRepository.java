@@ -40,6 +40,13 @@ public class UrbanPlaceRepository {
 				""", this::map);
 	}
 
+	public List<UrbanPlaceRecord> findByKind(String kind) {
+		return this.jdbcTemplate.query(SELECT + """
+				WHERE kind = ?
+				ORDER BY sort_order ASC, label ASC
+				""", this::map, kind);
+	}
+
 	private UrbanPlaceRecord map(ResultSet rs, int rowNum) throws SQLException {
 		return new UrbanPlaceRecord(
 				rs.getObject("id", UUID.class),

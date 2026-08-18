@@ -18,7 +18,7 @@ import java.util.UUID;
 
 import com.motodigo.core.geo.entity.BuiltRoute;
 import com.motodigo.core.geo.entity.BuiltRouteOption;
-import com.motodigo.core.geo.service.RouteBuilder;
+import com.motodigo.core.geo.service.RouteEngine;
 import com.motodigo.core.pricing.config.PricingProperties;
 import com.motodigo.core.pricing.dto.PricingEstimateRequest;
 import com.motodigo.core.pricing.entity.PricingRuleRecord;
@@ -34,7 +34,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class PricingServiceTest {
 
 	@Mock
-	private RouteBuilder routeBuilder;
+	private RouteEngine routeEngine;
 
 	@Mock
 	private PricingRuleRepository pricingRuleRepository;
@@ -47,14 +47,14 @@ class PricingServiceTest {
 	@BeforeEach
 	void setUp() {
 		PricingProperties properties = new PricingProperties(210, LocalTime.of(22, 0), LocalTime.of(5, 0), 300, 0.2);
-		this.pricingService = new PricingService(this.routeBuilder, this.pricingRuleRepository, this.openMeteoClient,
+		this.pricingService = new PricingService(this.routeEngine, this.pricingRuleRepository, this.openMeteoClient,
 				properties, Clock.fixed(Instant.parse("2026-08-15T10:00:00Z"), ZoneOffset.UTC));
 	}
 
 	@Test
 	void appliesBaseDistanceNightAndWeatherThenRounds() {
 		UUID routeId = UUID.randomUUID();
-		when(this.routeBuilder.buildRoute(3.86, 11.50, 3.88, 11.54))
+		when(this.routeEngine.buildRoute(3.86, 11.50, 3.88, 11.54))
 				.thenReturn(new BuiltRoute(routeId, 3.86, 11.50, 3.88, 11.54, "LINESTRING(11.50 3.86, 11.54 3.88)",
 						10.0, 18, "PROPOSED", List.of(), List.of()));
 		when(this.pricingRuleRepository.findActiveForPoint(eq(3.86), eq(11.50), any()))
@@ -79,7 +79,7 @@ class PricingServiceTest {
 	@Test
 	void pricesThreeDistinctRouteOptionsAndKeepsBreakdownAlignedWithPrimary() {
 		UUID routeId = UUID.randomUUID();
-		when(this.routeBuilder.buildRoute(3.86, 11.50, 3.88, 11.54))
+		when(this.routeEngine.buildRoute(3.86, 11.50, 3.88, 11.54))
 				.thenReturn(new BuiltRoute(routeId, 3.86, 11.50, 3.88, 11.54,
 						"LINESTRING(11.50 3.86, 11.51 3.87, 11.54 3.88)", 11.4, 45, "PROPOSED", List.of(),
 						List.of(

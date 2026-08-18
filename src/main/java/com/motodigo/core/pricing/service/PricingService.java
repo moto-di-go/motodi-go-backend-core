@@ -14,7 +14,7 @@ import java.util.UUID;
 
 import com.motodigo.core.geo.entity.BuiltRoute;
 import com.motodigo.core.geo.entity.BuiltRouteOption;
-import com.motodigo.core.geo.service.RouteBuilder;
+import com.motodigo.core.geo.service.RouteEngine;
 import com.motodigo.core.pricing.config.PricingProperties;
 import com.motodigo.core.pricing.dto.PricingBreakdown;
 import com.motodigo.core.pricing.dto.PricingEstimateRequest;
@@ -25,6 +25,7 @@ import com.motodigo.core.pricing.exception.PricingErrorCode;
 import com.motodigo.core.pricing.exception.PricingException;
 import com.motodigo.core.pricing.repository.PricingRuleRepository;
 import com.motodigo.core.pricing.weather.OpenMeteoClient;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,20 +36,21 @@ public class PricingService {
 
 	public static final ZoneId APP_ZONE = ZoneId.of("Africa/Douala");
 
-	private final RouteBuilder routeBuilder;
+	private final RouteEngine routeEngine;
 	private final PricingRuleRepository pricingRuleRepository;
 	private final OpenMeteoClient openMeteoClient;
 	private final PricingProperties properties;
 	private final Clock clock;
 
-	public PricingService(RouteBuilder routeBuilder, PricingRuleRepository pricingRuleRepository,
+	@Autowired
+	public PricingService(RouteEngine routeEngine, PricingRuleRepository pricingRuleRepository,
 			OpenMeteoClient openMeteoClient, PricingProperties properties) {
-		this(routeBuilder, pricingRuleRepository, openMeteoClient, properties, Clock.systemUTC());
+		this(routeEngine, pricingRuleRepository, openMeteoClient, properties, Clock.systemUTC());
 	}
 
-	PricingService(RouteBuilder routeBuilder, PricingRuleRepository pricingRuleRepository,
+	PricingService(RouteEngine routeEngine, PricingRuleRepository pricingRuleRepository,
 			OpenMeteoClient openMeteoClient, PricingProperties properties, Clock clock) {
-		this.routeBuilder = routeBuilder;
+		this.routeEngine = routeEngine;
 		this.pricingRuleRepository = pricingRuleRepository;
 		this.openMeteoClient = openMeteoClient;
 		this.properties = properties;
@@ -61,7 +63,7 @@ public class PricingService {
 				|| request.destinationLon() == null) {
 			throw new PricingException(PricingErrorCode.ESTIMATE_INVALID);
 		}
-		BuiltRoute route = this.routeBuilder.buildRoute(request.originLat(), request.originLon(),
+		BuiltRoute route = this.routeEngine.buildRoute(request.originLat(), request.originLon(),
 				request.destinationLat(), request.destinationLon());
 		Instant now = Instant.now(this.clock);
 		PricingRuleRecord rule = this.pricingRuleRepository.findActiveForPoint(request.originLat(), request.originLon(), now)
