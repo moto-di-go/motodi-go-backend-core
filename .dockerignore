@@ -1,6 +1,7 @@
 .git
 .mvn/wrapper/maven-wrapper.jar
-target
+target/**
+!target/*.jar
 docs
 HELP.md
 *.log

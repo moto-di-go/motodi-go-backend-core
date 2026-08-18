@@ -26,6 +26,7 @@ import com.motodigo.core.intercity.entity.AnnouncementStatus;
 import com.motodigo.core.intercity.entity.IntercityAnnouncementRecord;
 import com.motodigo.core.profile.entity.ProfileRecord;
 import com.motodigo.core.profile.entity.ProfileType;
+import com.motodigo.core.profile.entity.ValidationStatus;
 import com.motodigo.core.profile.repository.ProfileRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -308,6 +309,9 @@ public class BookingService {
 		if (profile.type() != ProfileType.PASSENGER) {
 			throw new BookingException(BookingErrorCode.BOOKING_FORBIDDEN,
 					"Un profil passager actif est requis pour souscrire.");
+		}
+		if (profile.validationStatus() != ValidationStatus.VALIDATED) {
+			throw new BookingException(BookingErrorCode.BOOKING_KYC_REQUIRED);
 		}
 		return profile;
 	}

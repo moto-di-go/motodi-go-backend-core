@@ -159,9 +159,10 @@ class AuthFlowIT {
 						"preferredLanguage", "fr",
 						"emergencyContact", "+237699000001")));
 		assertThat(passenger.get("type")).isEqualTo("PASSENGER");
-		assertThat(passenger.get("validationStatus")).isEqualTo("VALIDATED");
+		assertThat(passenger.get("validationStatus")).isEqualTo("PENDING");
 		assertThat(passenger.get("active")).isEqualTo(true);
-		assertThat(passenger.get("allowedActions").toString()).contains("PASSENGER_PAY");
+		assertThat(passenger.get("allowedActions").toString()).contains("PASSENGER_SEARCH_RIDE");
+		assertThat(passenger.get("allowedActions").toString()).contains("KYC_UPLOAD");
 
 		String licenseNumber = "LIC-" + UUID.randomUUID().toString().substring(0, 8);
 		Map<?, ?> motoTaxi = createProfile(login.accessToken(), Map.of(

@@ -11,6 +11,7 @@ public enum BookingErrorCode {
 	BOOKING_NOT_CONFIRMABLE(HttpStatus.CONFLICT, "Cette reservation ne peut pas etre confirmee."),
 	BOOKING_DUPLICATE(HttpStatus.CONFLICT, "Une reservation active existe deja pour cette annonce."),
 	BOOKING_OWN_ANNOUNCEMENT(HttpStatus.FORBIDDEN, "Vous ne pouvez pas souscrire à votre propre annonce."),
+	BOOKING_KYC_REQUIRED(HttpStatus.FORBIDDEN, "Validation KYC requise (CNI) avant de souscrire a un trajet."),
 	ACTIVE_PROFILE_REQUIRED(HttpStatus.FORBIDDEN, "Un profil actif est requis."),
 	BOOKING_INVALID(HttpStatus.BAD_REQUEST, "Demande de reservation invalide.");
 

@@ -19,7 +19,14 @@ class PermissionServiceTest {
 	void passengerReceivesPassengerActions() {
 		assertThat(this.permissionService.allowedActions(profile(ProfileType.PASSENGER, ValidationStatus.VALIDATED)))
 				.contains("PROFILE_READ", "PROFILE_UPDATE", "PROFILE_SWITCH", "PASSENGER_SEARCH_RIDE", "PASSENGER_BOOK_RIDE",
-						"PASSENGER_PAY");
+						"PASSENGER_PAY")
+				.doesNotContain("KYC_UPLOAD");
+	}
+
+	@Test
+	void pendingPassengerReceivesKycUpload() {
+		assertThat(this.permissionService.allowedActions(profile(ProfileType.PASSENGER, ValidationStatus.PENDING)))
+				.contains("PASSENGER_SEARCH_RIDE", "KYC_UPLOAD");
 	}
 
 	@Test

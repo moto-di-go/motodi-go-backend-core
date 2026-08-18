@@ -326,6 +326,44 @@ class KycServiceTest {
 	}
 
 	@Test
+	void listCurrentDocumentsRequiresOnlyCniForPassenger() {
+		UUID userId = UUID.randomUUID();
+		UUID profileId = UUID.randomUUID();
+		when(this.kycRepository.findProfileById(profileId))
+				.thenReturn(Optional.of(profile(profileId, userId, ProfileType.PASSENGER, ValidationStatus.PENDING)));
+		when(this.kycRepository.findDocumentsByProfile(profileId)).thenReturn(List.of());
+
+		var response = this.service.listCurrentDocuments(userId, profileId);
+
+		Assertions.assertThat(response.requirements()).hasSize(1);
+		Assertions.assertThat(response.requirements().getFirst().type()).isEqualTo(DocumentType.CNI);
+		Assertions.assertThat(response.requirements().getFirst().uploaded()).isFalse();
+	}
+
+	@Test
+	void uploadCniAcceptedForPassengerProfile() {
+		UUID userId = UUID.randomUUID();
+		UUID profileId = UUID.randomUUID();
+		MockMultipartFile file = new MockMultipartFile("file", "cni.jpg", "image/jpeg", new byte[] { 1, 2, 3 });
+		OfficialDocumentRecord saved = document(profileId, DocumentType.CNI, DocumentStatus.PENDING_REVIEW, null);
+		when(this.kycRepository.findProfileById(profileId))
+				.thenReturn(Optional.of(profile(profileId, userId, ProfileType.PASSENGER, ValidationStatus.PENDING)));
+		when(this.documentStorage.put(any(), any(byte[].class), eq("image/jpeg")))
+				.thenReturn("s3://bucket/kyc/doc.enc");
+		when(this.kycRepository.saveDocument(eq(profileId), eq(null), eq(DocumentType.CNI),
+				eq(DocumentStatus.PENDING_REVIEW), eq("s3://bucket/kyc/doc.enc"), eq("cni.jpg"),
+				eq("image/jpeg"), eq(3L), any())).thenReturn(saved);
+		when(this.kycRepository.findDocumentsByProfile(profileId)).thenReturn(List.of(saved));
+
+		var response = this.service.uploadDocument(userId, profileId, DocumentType.CNI, null, file);
+
+		Assertions.assertThat(response.document().type()).isEqualTo(DocumentType.CNI);
+		Assertions.assertThat(response.requirements()).hasSize(1);
+		Assertions.assertThat(response.requirements().getFirst().uploaded()).isTrue();
+		verify(this.kycRepository, never()).updateProfileStatus(any(), any());
+	}
+
+	@Test
 	void uploadRejectsInvalidFileBeforeStorage() {
 		UUID userId = UUID.randomUUID();
 		UUID profileId = UUID.randomUUID();

@@ -31,7 +31,7 @@ class AfricasTalkingOtpSenderTest {
 	}
 
 	@Test
-	void sendsBulkSmsJsonRequestWithApiKeyHeader() throws Exception {
+	void sendsFormEncodedSmsRequestWithApiKeyHeader() throws Exception {
 		startServer(200, """
 				{"SMSMessageData":{"Message":"Sent","Recipients":[{"statusCode":101,"number":"+237699001122","status":"Success"}]}}
 				""");
@@ -40,12 +40,46 @@ class AfricasTalkingOtpSenderTest {
 		sender.sendOtp("+237699001122", "Votre code est 123456");
 
 		CapturedSmsRequest request = this.capturedRequests.poll(2, TimeUnit.SECONDS);
-		assertThat(request.path()).isEqualTo("/version1/messaging/bulk");
+		assertThat(request.path()).isEqualTo("/version1/messaging");
 		assertThat(request.apiKey()).isEqualTo("test-key");
-		assertThat(request.body()).contains("\"username\":\"test-user\"");
-		assertThat(request.body()).contains("\"phoneNumbers\":[\"+237699001122\"]");
-		assertThat(request.body()).contains("\"senderId\":\"MOTODIGO\"");
-		assertThat(request.body()).contains("\"enqueue\":1");
+		assertThat(request.body()).contains("username=test-user");
+		assertThat(request.body()).contains("to=%2B237699001122");
+		assertThat(request.body()).contains("from=MOTODIGO");
+		assertThat(request.body()).contains("enqueue=1");
+	}
+
+	@Test
+	void sendsSandboxUsernameInLowercase() throws Exception {
+		startServer(200, """
+				{"SMSMessageData":{"Message":"Sent","Recipients":[{"statusCode":101,"number":"+237699001122","status":"Success"}]}}
+				""");
+		AfricasTalkingOtpSender sender = new AfricasTalkingOtpSender(new AfricasTalkingProperties(
+				URI.create("http://localhost:" + this.server.getAddress().getPort()),
+				"Sandbox",
+				"test-key",
+				"Sandbox",
+				true,
+				1000,
+				1000));
+
+		sender.sendOtp("+237699001122", "Votre code est 123456");
+
+		CapturedSmsRequest request = this.capturedRequests.poll(2, TimeUnit.SECONDS);
+		assertThat(request.body()).contains("username=sandbox");
+		assertThat(request.body()).doesNotContain("from=");
+	}
+
+	@Test
+	void acceptsProcessedQueuedAndSentStatusCodes() throws Exception {
+		for (int statusCode : new int[] {100, 101, 102}) {
+			startServer(200, """
+					{"SMSMessageData":{"Message":"Sent","Recipients":[{"statusCode":%d,"number":"+237699001122","status":"Success"}]}}
+					""".formatted(statusCode));
+			AfricasTalkingOtpSender sender = new AfricasTalkingOtpSender(properties());
+			sender.sendOtp("+237699001122", "Votre code est 123456");
+			assertThat(this.capturedRequests.poll(2, TimeUnit.SECONDS)).isNotNull();
+			stopServer();
+		}
 	}
 
 	@Test
@@ -54,6 +88,44 @@ class AfricasTalkingOtpSenderTest {
 				{"SMSMessageData":{"Message":"Rejected","Recipients":[{"statusCode":403,"number":"+237699001122","status":"Invalid"}]}}
 				""");
 		AfricasTalkingOtpSender sender = new AfricasTalkingOtpSender(properties());
+
+		assertThatThrownBy(() -> sender.sendOtp("+237699001122", "Votre code est 123456"))
+				.isInstanceOf(AuthException.class);
+	}
+
+	@Test
+	void rejectsInsufficientBalanceStatus() throws Exception {
+		startServer(200, """
+				{"SMSMessageData":{"Message":"Rejected","Recipients":[{"statusCode":405,"number":"+237699001122","status":"InsufficientBalance"}]}}
+				""");
+		AfricasTalkingOtpSender sender = new AfricasTalkingOtpSender(properties());
+
+		assertThatThrownBy(() -> sender.sendOtp("+237699001122", "Votre code est 123456"))
+				.isInstanceOf(AuthException.class);
+	}
+
+	@Test
+	void rejectsHttpErrorFromProvider() throws Exception {
+		startServer(500, """
+				{"error":"unavailable"}
+				""");
+		AfricasTalkingOtpSender sender = new AfricasTalkingOtpSender(properties());
+
+		assertThatThrownBy(() -> sender.sendOtp("+237699001122", "Votre code est 123456"))
+				.isInstanceOf(AuthException.class);
+	}
+
+	@Test
+	void rejectsMissingCredentialsWithoutCallingProvider() {
+		AfricasTalkingProperties missingCredentials = new AfricasTalkingProperties(
+				URI.create("http://localhost:9"),
+				"",
+				"",
+				"",
+				true,
+				1000,
+				1000);
+		AfricasTalkingOtpSender sender = new AfricasTalkingOtpSender(missingCredentials);
 
 		assertThatThrownBy(() -> sender.sendOtp("+237699001122", "Votre code est 123456"))
 				.isInstanceOf(AuthException.class);
@@ -83,7 +155,7 @@ class AfricasTalkingOtpSenderTest {
 				"test-user",
 				"test-key",
 				"MOTODIGO",
-				1,
+				true,
 				1000,
 				1000);
 	}
