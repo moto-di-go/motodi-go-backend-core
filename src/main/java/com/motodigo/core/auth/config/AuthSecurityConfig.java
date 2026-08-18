@@ -64,7 +64,11 @@ class AuthSecurityConfig {
 								"/api/v1/auth/refresh",
 								"/api/v1/auth/password/forgot",
 								"/api/v1/auth/password/reset").permitAll()
+						.requestMatchers(HttpMethod.POST,
+								"/api/v1/integrations/mobile-money/callback",
+								"/api/v1/integrations/mobile-money/*/callback").permitAll()
 						.requestMatchers(HttpMethod.POST, "/api/v1/auth/logout").authenticated()
+						.requestMatchers("/api/v1/realtime/ws").permitAll()
 						.anyRequest().authenticated())
 				.oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));
 		activeSessionFilter.ifAvailable(filter -> http.addFilterAfter(filter, BearerTokenAuthenticationFilter.class));

@@ -22,7 +22,12 @@ public class PermissionService {
 		}
 
 		switch (profile.type()) {
-			case PASSENGER -> actions.addAll(List.of("PASSENGER_SEARCH_RIDE", "PASSENGER_BOOK_RIDE", "PASSENGER_PAY"));
+			case PASSENGER -> {
+				actions.addAll(List.of("PASSENGER_SEARCH_RIDE", "PASSENGER_BOOK_RIDE", "PASSENGER_PAY"));
+				if (profile.validationStatus() != ValidationStatus.VALIDATED) {
+					actions.add("KYC_UPLOAD");
+				}
+			}
 			case MOTOTAXI -> addDriverActions(actions, profile.validationStatus(), "MOTOTAXI");
 			case TRANSPORTER -> addTransporterActions(actions, profile.validationStatus());
 			case AGENCY -> addAgencyActions(actions, profile.validationStatus());
@@ -55,7 +60,8 @@ public class PermissionService {
 
 	private static void addAgencyActions(List<String> actions, ValidationStatus status) {
 		if (status == ValidationStatus.VALIDATED) {
-			actions.addAll(List.of("AGENCY_FLEET_MANAGE", "INTERCITY_ANNOUNCEMENT_WRITE", "AGENCY_STATS_READ"));
+			actions.addAll(List.of("AGENCY_FLEET_MANAGE", "INTERCITY_ANNOUNCEMENT_WRITE", "INTERCITY_BOOKING_CONFIRM",
+					"AGENCY_STATS_READ"));
 		}
 		else {
 			actions.add("KYC_UPLOAD");

@@ -19,7 +19,14 @@ class PermissionServiceTest {
 	void passengerReceivesPassengerActions() {
 		assertThat(this.permissionService.allowedActions(profile(ProfileType.PASSENGER, ValidationStatus.VALIDATED)))
 				.contains("PROFILE_READ", "PROFILE_UPDATE", "PROFILE_SWITCH", "PASSENGER_SEARCH_RIDE", "PASSENGER_BOOK_RIDE",
-						"PASSENGER_PAY");
+						"PASSENGER_PAY")
+				.doesNotContain("KYC_UPLOAD");
+	}
+
+	@Test
+	void pendingPassengerReceivesKycUpload() {
+		assertThat(this.permissionService.allowedActions(profile(ProfileType.PASSENGER, ValidationStatus.PENDING)))
+				.contains("PASSENGER_SEARCH_RIDE", "KYC_UPLOAD");
 	}
 
 	@Test
@@ -31,6 +38,24 @@ class PermissionServiceTest {
 		assertThat(this.permissionService.allowedActions(profile(ProfileType.MOTOTAXI, ValidationStatus.VALIDATED)))
 				.contains("MOTOTAXI_SET_AVAILABILITY", "MOTOTAXI_SHARE_POSITION", "MOTOTAXI_MANAGE_TRIP")
 				.doesNotContain("KYC_UPLOAD");
+	}
+
+	@Test
+	void validatedTransporterReceivesIntercityWrite() {
+		assertThat(this.permissionService.allowedActions(profile(ProfileType.TRANSPORTER, ValidationStatus.PENDING)))
+				.contains("KYC_UPLOAD")
+				.doesNotContain("INTERCITY_ANNOUNCEMENT_WRITE");
+
+		assertThat(this.permissionService.allowedActions(profile(ProfileType.TRANSPORTER, ValidationStatus.VALIDATED)))
+				.contains("INTERCITY_ANNOUNCEMENT_WRITE", "INTERCITY_BOOKING_CONFIRM")
+				.doesNotContain("KYC_UPLOAD");
+	}
+
+	@Test
+	void validatedAgencyReceivesIntercityWrite() {
+		assertThat(this.permissionService.allowedActions(profile(ProfileType.AGENCY, ValidationStatus.VALIDATED)))
+				.contains("INTERCITY_ANNOUNCEMENT_WRITE", "INTERCITY_BOOKING_CONFIRM", "AGENCY_FLEET_MANAGE",
+						"AGENCY_STATS_READ");
 	}
 
 	private static ProfileRecord profile(ProfileType type, ValidationStatus status) {

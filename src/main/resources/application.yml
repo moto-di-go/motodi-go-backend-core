@@ -1,6 +1,10 @@
 spring:
   application:
     name: motodi-go-backend-core
+  servlet:
+    multipart:
+      max-file-size: ${KYC_MAX_FILE_SIZE_BYTES:5242880}
+      max-request-size: ${KYC_MAX_FILE_SIZE_BYTES:5242880}
 
 management:
   endpoints:
@@ -34,6 +38,65 @@ motodigo:
     username: ${AFRICAS_TALKING_USERNAME:}
     api-key: ${AFRICAS_TALKING_API_KEY:}
     sender-id: ${AFRICAS_TALKING_SENDER_ID:}
-    enqueue: ${AFRICAS_TALKING_ENQUEUE:1}
+    enqueue: ${AFRICAS_TALKING_ENQUEUE:true}
     connect-timeout-ms: ${AFRICAS_TALKING_CONNECT_TIMEOUT_MS:3000}
     read-timeout-ms: ${AFRICAS_TALKING_READ_TIMEOUT_MS:5000}
+  kyc:
+    storage:
+      endpoint: ${KYC_STORAGE_ENDPOINT:http://localhost:9000}
+      region: ${KYC_STORAGE_REGION:us-east-1}
+      bucket: ${KYC_STORAGE_BUCKET:motodigo-kyc}
+      access-key: ${KYC_STORAGE_ACCESS_KEY:change-me}
+      secret-key: ${KYC_STORAGE_SECRET_KEY:change-me}
+      path-style: ${KYC_STORAGE_PATH_STYLE:true}
+  geo:
+    min-ingest-interval-seconds: ${GEO_MIN_INGEST_INTERVAL_SECONDS:3}
+    target-ingest-interval-seconds: ${GEO_TARGET_INGEST_INTERVAL_SECONDS:5}
+    last-position-freshness-seconds: ${GEO_LAST_POSITION_FRESHNESS_SECONDS:60}
+    history-retention-hours: ${GEO_HISTORY_RETENTION_HOURS:24}
+    nearby-default-radius-km: ${GEO_NEARBY_DEFAULT_RADIUS_KM:2}
+    nearby-max-radius-km: ${GEO_NEARBY_MAX_RADIUS_KM:10}
+    yaounde-min-lat: ${GEO_YAOUNDE_MIN_LAT:3.72}
+    yaounde-max-lat: ${GEO_YAOUNDE_MAX_LAT:4.05}
+    yaounde-min-lon: ${GEO_YAOUNDE_MIN_LON:11.38}
+    yaounde-max-lon: ${GEO_YAOUNDE_MAX_LON:11.64}
+    routes-yaounde-path: ${GIS_ROUTES_YAOUNDE_PATH:./data/gis/routes_yaounde.gpkg}
+    retention-cron: ${GEO_RETENTION_CRON:0 15 * * * *}
+  geostack:
+    photon-enabled: ${GEO_STACK_PHOTON_ENABLED:false}
+    photon-base-url: ${GEO_STACK_PHOTON_BASE_URL:http://localhost:2322}
+    photon-timeout-ms: ${GEO_STACK_PHOTON_TIMEOUT_MS:1200}
+    valhalla-enabled: ${GEO_STACK_VALHALLA_ENABLED:false}
+    valhalla-base-url: ${GEO_STACK_VALHALLA_BASE_URL:http://localhost:8002}
+    valhalla-timeout-ms: ${GEO_STACK_VALHALLA_TIMEOUT_MS:12000}
+    valhalla-costing: ${GEO_STACK_VALHALLA_COSTING:motorcycle}
+    valhalla-alternates: ${GEO_STACK_VALHALLA_ALTERNATES:2}
+  pricing:
+    fare-ttl-minutes: ${PRICING_FARE_TTL_MINUTES:210}
+    night-start: ${PRICING_NIGHT_START:22:00}
+    night-end: ${PRICING_NIGHT_END:05:00}
+    weather-cache-seconds: ${PRICING_WEATHER_CACHE_SECONDS:300}
+    rain-threshold-mm: ${PRICING_RAIN_THRESHOLD_MM:0.2}
+  booking:
+    confirmation-ttl: ${BOOKING_CONFIRMATION_TTL:10m}
+    payment-ttl: ${BOOKING_PAYMENT_TTL:10m}
+    expiration-cron: ${BOOKING_EXPIRATION_CRON:0 * * * * *}
+  payment:
+    mobile-money:
+      mode: ${MOBILE_MONEY_CLIENT_MODE:stub}
+      pending-ttl: ${MOBILE_MONEY_PENDING_TTL:30m}
+      connect-timeout-ms: ${MOBILE_MONEY_CONNECT_TIMEOUT_MS:3000}
+      read-timeout-ms: ${MOBILE_MONEY_READ_TIMEOUT_MS:5000}
+      providers:
+        MTN_MOMO:
+          base-url: ${MTN_MOMO_BASE_URL:https://placeholder.mtn.example}
+          api-key: ${MTN_MOMO_API_KEY:}
+          subscription-key: ${MTN_MOMO_SUBSCRIPTION_KEY:}
+        ORANGE_MONEY:
+          base-url: ${ORANGE_MONEY_BASE_URL:https://placeholder.orange.example}
+          api-key: ${ORANGE_MONEY_API_KEY:}
+          subscription-key: ${ORANGE_MONEY_SUBSCRIPTION_KEY:}
+        AGGREGATOR:
+          base-url: ${AGGREGATOR_BASE_URL:https://placeholder.aggregator.example}
+          api-key: ${AGGREGATOR_API_KEY:}
+          subscription-key: ${AGGREGATOR_SUBSCRIPTION_KEY:}

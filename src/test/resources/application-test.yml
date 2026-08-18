@@ -4,3 +4,14 @@ motodigo:
   otp:
     provider: test
     pepper: test-otp-pepper-at-least-16-bytes
+  booking:
+    confirmation-ttl: 10m
+    payment-ttl: 10m
+    expiration-cron: "0 * * * * *"
+  payment:
+    mobile-money:
+      mode: stub
+      pending-ttl: 30m
+  geostack:
+    photon-enabled: false
+    valhalla-enabled: false

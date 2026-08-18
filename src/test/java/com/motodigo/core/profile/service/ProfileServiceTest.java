@@ -48,17 +48,17 @@ class ProfileServiceTest {
 	}
 
 	@Test
-	void createPassengerUsesValidatedStatusAndAllowsSeveralCompatibleProfiles() {
+	void createPassengerUsesPendingStatusAndAllowsSeveralCompatibleProfiles() {
 		UUID userId = UUID.randomUUID();
 		CreateProfileRequest request = new CreateProfileRequest(ProfileType.PASSENGER, "Aline", null,
 				new PassengerDetailsRequest("fr", null), null, null, null, null);
 		when(this.profileRepository.existsAnyByUserId(userId)).thenReturn(false);
-		when(this.profileRepository.create(eq(userId), eq(request), eq(ValidationStatus.VALIDATED), eq(true)))
-				.thenReturn(profile(userId, ProfileType.PASSENGER, ValidationStatus.VALIDATED, true));
+		when(this.profileRepository.create(eq(userId), eq(request), eq(ValidationStatus.PENDING), eq(true)))
+				.thenReturn(profile(userId, ProfileType.PASSENGER, ValidationStatus.PENDING, true));
 
 		this.profileService.createProfile(userId, request);
 
-		verify(this.profileRepository).create(eq(userId), eq(request), eq(ValidationStatus.VALIDATED), eq(true));
+		verify(this.profileRepository).create(eq(userId), eq(request), eq(ValidationStatus.PENDING), eq(true));
 	}
 
 	@Test
@@ -66,7 +66,7 @@ class ProfileServiceTest {
 		UUID userId = UUID.randomUUID();
 		CreateProfileRequest request = new CreateProfileRequest(ProfileType.PASSENGER, "Aline", null, null, null, null, null,
 				null);
-		when(this.profileRepository.create(eq(userId), eq(request), eq(ValidationStatus.VALIDATED), eq(false)))
+		when(this.profileRepository.create(eq(userId), eq(request), eq(ValidationStatus.PENDING), eq(false)))
 				.thenThrow(new DuplicateKeyException("uq_profiles_user_type"));
 		when(this.profileRepository.existsAnyByUserId(userId)).thenReturn(true);
 

@@ -125,6 +125,9 @@ public class AuthService {
 					return new AuthException(AuthErrorCode.AUTH_INVALID);
 		});
 
+		// Backfill wallet for ACTIVE accounts created before CORE-WALLET-001 (account-scoped, not profile).
+		this.walletProvisioningRepository.createActiveWalletIfMissing(user.id());
+
 		UUID sessionId = UUID.randomUUID();
 		TokenContext tokenContext = tokenContext(user.id());
 		TokenService.AccessToken accessToken = this.tokenService.generateAccessToken(user, sessionId, tokenContext.roles(),

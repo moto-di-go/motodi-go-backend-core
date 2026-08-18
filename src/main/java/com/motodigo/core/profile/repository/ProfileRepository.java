@@ -35,6 +35,7 @@ public class ProfileRepository {
 			       mt.operating_zone,
 			       tp.permit_number,
 			       tp.company_name AS transporter_company_name,
+			       tp.vehicle_id AS transporter_vehicle_id,
 			       ap.legal_name,
 			       ap.trade_register_number,
 			       ap.billing_plan,
@@ -73,6 +74,12 @@ public class ProfileRepository {
 		return this.jdbcTemplate.query(SELECT_JOINED + """
 				WHERE p.user_id = ? AND p.id = ?
 				""", this::mapProfile, userId, profileId).stream().findFirst();
+	}
+
+	public Optional<ProfileRecord> findById(UUID profileId) {
+		return this.jdbcTemplate.query(SELECT_JOINED + """
+				WHERE p.id = ?
+				""", this::mapProfile, profileId).stream().findFirst();
 	}
 
 	public Optional<ProfileRecord> findActiveByUserId(UUID userId) {
@@ -210,6 +217,16 @@ public class ProfileRepository {
 		}
 	}
 
+	public void updateAvailability(UUID profileId, DriverAvailability availability, boolean gpsConsent) {
+		this.jdbcTemplate.update("""
+				UPDATE driver_profiles
+				SET availability = ?,
+				    gps_consent = ?,
+				    last_availability_change_at = now()
+				WHERE profile_id = ?
+				""", availability.name(), gpsConsent, profileId);
+	}
+
 	private void insertDriver(UUID profileId, Boolean gpsConsent) {
 		this.jdbcTemplate.update("""
 				INSERT INTO driver_profiles (profile_id, gps_consent)
@@ -253,7 +270,8 @@ public class ProfileRepository {
 						rs.getString("operating_zone")) : null,
 				type == ProfileType.TRANSPORTER ? new ProfileRecord.TransporterDetails(
 						rs.getString("permit_number"),
-						rs.getString("transporter_company_name")) : null,
+						rs.getString("transporter_company_name"),
+						rs.getObject("transporter_vehicle_id", UUID.class)) : null,
 				type == ProfileType.AGENCY ? new ProfileRecord.AgencyDetails(
 						rs.getString("legal_name"),
 						rs.getString("trade_register_number"),
