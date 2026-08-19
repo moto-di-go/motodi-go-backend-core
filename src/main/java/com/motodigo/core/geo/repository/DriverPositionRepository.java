@@ -2,6 +2,7 @@ package com.motodigo.core.geo.repository;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -41,7 +42,8 @@ public class DriverPositionRepository {
 				          ST_Y(geom::geometry) AS lat,
 				          ST_X(geom::geometry) AS lon,
 				          speed_kmh, accuracy_meters, captured_at, received_at, consent_confirmed
-				""", this::mapPosition, driverProfileId, lon, lat, speedKmh, accuracyMeters, capturedAt, consentConfirmed);
+				""", this::mapPosition, driverProfileId, lon, lat, speedKmh, accuracyMeters, Timestamp.from(capturedAt),
+				consentConfirmed);
 	}
 
 	public void upsertLastPosition(DriverPositionRecord position) {
@@ -60,7 +62,8 @@ public class DriverPositionRepository {
 				  received_at = EXCLUDED.received_at,
 				  consent_confirmed = EXCLUDED.consent_confirmed
 				""", position.driverProfileId(), position.id(), position.lon(), position.lat(), position.speedKmh(),
-				position.accuracyMeters(), position.capturedAt(), position.receivedAt(), position.consentConfirmed());
+				position.accuracyMeters(), Timestamp.from(position.capturedAt()), Timestamp.from(position.receivedAt()),
+				position.consentConfirmed());
 	}
 
 	public Optional<DriverPositionRecord> findLastByDriver(UUID driverProfileId) {
@@ -103,18 +106,18 @@ public class DriverPositionRepository {
 				  AND lp.captured_at >= ?
 				  AND ST_DWithin(lp.geom::geography, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography, ?)
 				ORDER BY approach_meters ASC
-				""", this::mapPosition, lon, lat, minCapturedAt, lon, lat, radiusKm * 1000);
+				""", this::mapPosition, lon, lat, Timestamp.from(minCapturedAt), lon, lat, radiusKm * 1000);
 	}
 
 	public int deleteOlderThan(Instant cutoff) {
 		this.jdbcTemplate.update("""
 				DELETE FROM driver_last_positions
 				WHERE captured_at < ?
-				""", cutoff);
+				""", Timestamp.from(cutoff));
 		return this.jdbcTemplate.update("""
 				DELETE FROM driver_positions
 				WHERE captured_at < ?
-				""", cutoff);
+				""", Timestamp.from(cutoff));
 	}
 
 	private DriverPositionRecord mapLastPosition(ResultSet rs, int rowNum) throws SQLException {
