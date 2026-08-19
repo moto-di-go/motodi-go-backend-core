@@ -74,6 +74,8 @@ motodigo:
     photon-enabled: ${GEO_STACK_PHOTON_ENABLED:false}
     photon-base-url: ${GEO_STACK_PHOTON_BASE_URL:http://localhost:2322}
     photon-timeout-ms: ${GEO_STACK_PHOTON_TIMEOUT_MS:1200}
+    photon-control-url: ${GEO_STACK_PHOTON_CONTROL_URL:}
+    photon-control-timeout-ms: ${GEO_STACK_PHOTON_CONTROL_TIMEOUT_MS:5000}
     valhalla-enabled: ${GEO_STACK_VALHALLA_ENABLED:false}
     valhalla-base-url: ${GEO_STACK_VALHALLA_BASE_URL:http://localhost:8002}
     valhalla-timeout-ms: ${GEO_STACK_VALHALLA_TIMEOUT_MS:12000}

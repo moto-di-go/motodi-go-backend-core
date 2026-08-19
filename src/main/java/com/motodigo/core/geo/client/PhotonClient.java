@@ -89,6 +89,29 @@ public class PhotonClient {
 		}
 	}
 
+	public boolean isReachable() {
+		if (!this.properties.photonReady()) {
+			return false;
+		}
+		try {
+			this.restClient.get().uri("/status").retrieve().toBodilessEntity();
+			return true;
+		}
+		catch (RuntimeException statusEx) {
+			try {
+				this.restClient.get()
+						.uri(uri -> uri.path("/api").queryParam("q", "yaounde").queryParam("limit", 1).build())
+						.retrieve()
+						.toBodilessEntity();
+				return true;
+			}
+			catch (RuntimeException apiEx) {
+				log.debug("Photon ping failed: {}", apiEx.getMessage());
+				return false;
+			}
+		}
+	}
+
 	public UrbanPlaceResponse reverse(double lat, double lon) {
 		if (!this.properties.photonReady()) {
 			return null;

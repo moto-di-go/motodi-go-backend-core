@@ -11,7 +11,9 @@ public record GeoStackProperties(
 		String valhallaBaseUrl,
 		int valhallaTimeoutMs,
 		String valhallaCosting,
-		int valhallaAlternates) {
+		int valhallaAlternates,
+		String photonControlUrl,
+		int photonControlTimeoutMs) {
 
 	public GeoStackProperties {
 		if (photonBaseUrl == null || photonBaseUrl.isBlank()) {
@@ -32,10 +34,20 @@ public record GeoStackProperties(
 		if (valhallaAlternates < 0) {
 			valhallaAlternates = 2;
 		}
+		if (photonControlUrl == null) {
+			photonControlUrl = "";
+		}
+		if (photonControlTimeoutMs <= 0) {
+			photonControlTimeoutMs = 5000;
+		}
 	}
 
 	public boolean photonReady() {
 		return this.photonEnabled && this.photonBaseUrl != null && !this.photonBaseUrl.isBlank();
+	}
+
+	public boolean photonControlReady() {
+		return this.photonControlUrl != null && !this.photonControlUrl.isBlank();
 	}
 
 	public boolean valhallaReady() {
