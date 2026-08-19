@@ -45,6 +45,34 @@ class ExternalAuthConfigurationValidatorTest {
 		assertThatCode(validator::afterSingletonsInstantiated).doesNotThrowAnyException();
 	}
 
+	@Test
+	void rejectsMissingTwilioCredentialsOnStaging() {
+		ExternalAuthConfigurationValidator validator = twilioValidator(stagingEnvironment(),
+				"", "", "", "", "staging-user", "staging-key", "MOTODIGO");
+
+		assertThatThrownBy(validator::afterSingletonsInstantiated)
+				.isInstanceOf(IllegalStateException.class)
+				.hasMessageContaining("TWILIO_ACCOUNT_SID");
+	}
+
+	@Test
+	void rejectsTwilioWithoutAfricasTalkingFallbackOnStaging() {
+		ExternalAuthConfigurationValidator validator = twilioValidator(stagingEnvironment(),
+				"AC123", "SK123", "secret", "+15550001234", "", "", "");
+
+		assertThatThrownBy(validator::afterSingletonsInstantiated)
+				.isInstanceOf(IllegalStateException.class)
+				.hasMessageContaining("AFRICAS_TALKING_USERNAME");
+	}
+
+	@Test
+	void acceptsTwilioWithFullCredentialsOnStaging() {
+		ExternalAuthConfigurationValidator validator = twilioValidator(stagingEnvironment(),
+				"AC123", "SK123", "secret", "+15550001234", "staging-user", "staging-key", "MOTODIGO");
+
+		assertThatCode(validator::afterSingletonsInstantiated).doesNotThrowAnyException();
+	}
+
 	private static MockEnvironment stagingEnvironment() {
 		MockEnvironment environment = new MockEnvironment();
 		environment.setActiveProfiles("staging");
@@ -53,6 +81,19 @@ class ExternalAuthConfigurationValidatorTest {
 
 	private static ExternalAuthConfigurationValidator validator(MockEnvironment environment, String provider,
 			String username, String apiKey, String senderId) {
+		return twilioValidator(environment, provider, "", "", "", "", username, apiKey, senderId);
+	}
+
+	private static ExternalAuthConfigurationValidator twilioValidator(MockEnvironment environment,
+			String accountSid, String apiKeySid, String apiKeySecret, String fromNumber,
+			String atUsername, String atApiKey, String atSenderId) {
+		return twilioValidator(environment, "twilio", accountSid, apiKeySid, apiKeySecret, fromNumber,
+				atUsername, atApiKey, atSenderId);
+	}
+
+	private static ExternalAuthConfigurationValidator twilioValidator(MockEnvironment environment, String provider,
+			String accountSid, String apiKeySid, String apiKeySecret, String fromNumber,
+			String atUsername, String atApiKey, String atSenderId) {
 		AuthProperties authProperties = new AuthProperties(
 				"staging-jwt-secret-at-least-32-bytes-long",
 				"https://staging.example.com",
@@ -63,13 +104,15 @@ class ExternalAuthConfigurationValidatorTest {
 				"staging-otp-pepper-16");
 		AfricasTalkingProperties africasTalkingProperties = new AfricasTalkingProperties(
 				URI.create("https://api.africastalking.com"),
-				username,
-				apiKey,
-				senderId,
+				atUsername,
+				atApiKey,
+				atSenderId,
 				true,
 				3000,
 				5000);
+		TwilioProperties twilioProperties = new TwilioProperties(
+				accountSid, "", apiKeySid, apiKeySecret, fromNumber, 5000, 10000);
 		return new ExternalAuthConfigurationValidator(environment, authProperties, otpProperties,
-				africasTalkingProperties);
+				africasTalkingProperties, twilioProperties);
 	}
 }

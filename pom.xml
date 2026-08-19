@@ -76,6 +76,11 @@
 			<artifactId>s3</artifactId>
 			<version>${aws.sdk.version}</version>
 		</dependency>
+		<dependency>
+			<groupId>com.twilio.sdk</groupId>
+			<artifactId>twilio</artifactId>
+			<version>12.1.1</version>
+		</dependency>
 
 		<dependency>
 			<groupId>org.postgresql</groupId>
