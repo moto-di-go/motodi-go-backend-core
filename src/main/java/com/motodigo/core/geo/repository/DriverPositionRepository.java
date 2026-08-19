@@ -4,6 +4,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -17,8 +18,8 @@ import org.springframework.stereotype.Repository;
 @ConditionalOnProperty(prefix = "spring.datasource", name = "url")
 public class DriverPositionRepository {
 
-	private static final String SELECT_POSITION = """
-			SELECT id, driver_profile_id,
+	private static final String SELECT_LAST_POSITION = """
+			SELECT position_id AS id, driver_profile_id,
 			       ST_Y(geom::geometry) AS lat,
 			       ST_X(geom::geometry) AS lon,
 			       speed_kmh, accuracy_meters, captured_at, received_at, consent_confirmed
@@ -32,16 +33,18 @@ public class DriverPositionRepository {
 
 	public DriverPositionRecord insert(UUID driverProfileId, double lat, double lon, Double speedKmh,
 			Double accuracyMeters, Instant capturedAt, boolean consentConfirmed) {
+		OffsetDateTime capturedAtDb = toUtc(capturedAt);
 		return this.jdbcTemplate.queryForObject("""
 				INSERT INTO driver_positions (
-				  driver_profile_id, geom, speed_kmh, accuracy_meters, captured_at, consent_confirmed
+				  driver_profile_id, geom, speed_kmh, accuracy_meters, captured_at, received_at, consent_confirmed
 				)
-				VALUES (?, ST_SetSRID(ST_MakePoint(?, ?), 4326), ?, ?, ?, ?)
+				VALUES (?, ST_SetSRID(ST_MakePoint(?, ?), 4326), ?, ?, ?, ?, ?)
 				RETURNING id, driver_profile_id,
 				          ST_Y(geom::geometry) AS lat,
 				          ST_X(geom::geometry) AS lon,
 				          speed_kmh, accuracy_meters, captured_at, received_at, consent_confirmed
-				""", this::mapPosition, driverProfileId, lon, lat, speedKmh, accuracyMeters, capturedAt, consentConfirmed);
+				""", this::mapPosition, driverProfileId, lon, lat, speedKmh, accuracyMeters, capturedAtDb, capturedAtDb,
+				consentConfirmed);
 	}
 
 	public void upsertLastPosition(DriverPositionRecord position) {
@@ -60,14 +63,15 @@ public class DriverPositionRepository {
 				  received_at = EXCLUDED.received_at,
 				  consent_confirmed = EXCLUDED.consent_confirmed
 				""", position.driverProfileId(), position.id(), position.lon(), position.lat(), position.speedKmh(),
-				position.accuracyMeters(), position.capturedAt(), position.receivedAt(), position.consentConfirmed());
+				position.accuracyMeters(), toUtc(position.capturedAt()), toUtc(position.receivedAt()),
+				position.consentConfirmed());
 	}
 
 	public Optional<DriverPositionRecord> findLastByDriver(UUID driverProfileId) {
-		return this.jdbcTemplate.query(SELECT_POSITION + """
+		return this.jdbcTemplate.query(SELECT_LAST_POSITION + """
 				FROM driver_last_positions
 				WHERE driver_profile_id = ?
-				""", this::mapLastPosition, driverProfileId).stream().findFirst();
+				""", this::mapPosition, driverProfileId).stream().findFirst();
 	}
 
 	public Optional<Instant> findLastCapturedAt(UUID driverProfileId) {
@@ -103,22 +107,23 @@ public class DriverPositionRepository {
 				  AND lp.captured_at >= ?
 				  AND ST_DWithin(lp.geom::geography, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography, ?)
 				ORDER BY approach_meters ASC
-				""", this::mapPosition, lon, lat, minCapturedAt, lon, lat, radiusKm * 1000);
+				""", this::mapPosition, lon, lat, toUtc(minCapturedAt), lon, lat, radiusKm * 1000);
 	}
 
 	public int deleteOlderThan(Instant cutoff) {
+		OffsetDateTime cutoffDb = toUtc(cutoff);
 		this.jdbcTemplate.update("""
 				DELETE FROM driver_last_positions
 				WHERE captured_at < ?
-				""", cutoff);
+				""", cutoffDb);
 		return this.jdbcTemplate.update("""
 				DELETE FROM driver_positions
 				WHERE captured_at < ?
-				""", cutoff);
+				""", cutoffDb);
 	}
 
-	private DriverPositionRecord mapLastPosition(ResultSet rs, int rowNum) throws SQLException {
-		return mapPosition(rs, rowNum);
+	private static OffsetDateTime toUtc(Instant instant) {
+		return instant == null ? null : instant.atOffset(ZoneOffset.UTC);
 	}
 
 	private DriverPositionRecord mapPosition(ResultSet rs, int rowNum) throws SQLException {
