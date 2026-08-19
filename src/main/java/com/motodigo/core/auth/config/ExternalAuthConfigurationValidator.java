@@ -19,13 +19,15 @@ class ExternalAuthConfigurationValidator implements SmartInitializingSingleton {
 	private final AuthProperties authProperties;
 	private final OtpProperties otpProperties;
 	private final AfricasTalkingProperties africasTalkingProperties;
+	private final TwilioProperties twilioProperties;
 
 	ExternalAuthConfigurationValidator(Environment environment, AuthProperties authProperties, OtpProperties otpProperties,
-			AfricasTalkingProperties africasTalkingProperties) {
+			AfricasTalkingProperties africasTalkingProperties, TwilioProperties twilioProperties) {
 		this.environment = environment;
 		this.authProperties = authProperties;
 		this.otpProperties = otpProperties;
 		this.africasTalkingProperties = africasTalkingProperties;
+		this.twilioProperties = twilioProperties;
 	}
 
 	@Override
@@ -42,10 +44,26 @@ class ExternalAuthConfigurationValidator implements SmartInitializingSingleton {
 			throw new IllegalStateException("OTP_PROVIDER=log is allowed only with local or test profiles");
 		}
 		if ("africas-talking".equals(provider)) {
-			requireNonBlank("AFRICAS_TALKING_USERNAME", this.africasTalkingProperties.username());
-			requireNonBlank("AFRICAS_TALKING_API_KEY", this.africasTalkingProperties.apiKey());
-			requireNonBlank("AFRICAS_TALKING_SENDER_ID", this.africasTalkingProperties.senderId());
+			validateAfricasTalking();
 		}
+		if ("twilio".equals(provider)) {
+			requireNonBlank("TWILIO_ACCOUNT_SID", this.twilioProperties.accountSid());
+			requireNonBlank("TWILIO_FROM_NUMBER", this.twilioProperties.fromNumber());
+			boolean hasApiKey = !this.twilioProperties.apiKeySid().isBlank()
+					&& !this.twilioProperties.apiKeySecret().isBlank();
+			boolean hasAuthToken = !this.twilioProperties.authToken().isBlank();
+			if (!hasApiKey && !hasAuthToken) {
+				throw new IllegalStateException(
+						"TWILIO_AUTH_TOKEN or both TWILIO_API_KEY_SID and TWILIO_API_KEY_SECRET are required");
+			}
+			validateAfricasTalking();
+		}
+	}
+
+	private void validateAfricasTalking() {
+		requireNonBlank("AFRICAS_TALKING_USERNAME", this.africasTalkingProperties.username());
+		requireNonBlank("AFRICAS_TALKING_API_KEY", this.africasTalkingProperties.apiKey());
+		requireNonBlank("AFRICAS_TALKING_SENDER_ID", this.africasTalkingProperties.senderId());
 	}
 
 	private boolean isLocalOrTest() {
