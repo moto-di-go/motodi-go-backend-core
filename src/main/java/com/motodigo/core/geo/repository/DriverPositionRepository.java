@@ -37,7 +37,7 @@ public class DriverPositionRepository {
 				INSERT INTO driver_positions (
 				  driver_profile_id, geom, speed_kmh, accuracy_meters, captured_at, consent_confirmed
 				)
-				VALUES (?, ST_SetSRID(ST_MakePoint(?, ?), 4326), ?, ?, ?, ?)
+				VALUES (?, ST_SetSRID(ST_MakePoint(?, ?), 4326), ?, ?, LEAST(CAST(? AS timestamptz), NOW()), ?)
 				RETURNING id, driver_profile_id,
 				          ST_Y(geom::geometry) AS lat,
 				          ST_X(geom::geometry) AS lon,
