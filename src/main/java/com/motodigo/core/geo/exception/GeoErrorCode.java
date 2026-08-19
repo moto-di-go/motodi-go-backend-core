@@ -13,7 +13,13 @@ public enum GeoErrorCode {
 	AVAILABILITY_INVALID(HttpStatus.BAD_REQUEST, "Disponibilite conducteur invalide."),
 	OUTSIDE_SERVICE_AREA(HttpStatus.UNPROCESSABLE_ENTITY, "Point hors de la zone de service Yaounde."),
 	ROUTE_NOT_FOUND(HttpStatus.UNPROCESSABLE_ENTITY, "Aucun itineraire routier trouve a Yaounde."),
-	NEARBY_RADIUS_INVALID(HttpStatus.BAD_REQUEST, "Rayon de recherche invalide.");
+	NEARBY_RADIUS_INVALID(HttpStatus.BAD_REQUEST, "Rayon de recherche invalide."),
+	ADMIN_REQUIRED(HttpStatus.FORBIDDEN, "Un profil administrateur est requis."),
+	PHOTON_DISABLED(HttpStatus.SERVICE_UNAVAILABLE, "Photon n'est pas active sur cet environnement."),
+	PHOTON_UPDATE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE,
+			"Le controleur Photon n'est pas disponible. Verifiez le service photon-control."),
+	PHOTON_UPDATE_IN_PROGRESS(HttpStatus.CONFLICT,
+			"Une mise a jour Photon est deja en cours.");
 
 	private final HttpStatus status;
 	private final String message;

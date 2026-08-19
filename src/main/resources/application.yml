@@ -33,6 +33,14 @@ motodigo:
     daily-limit-per-phone: ${OTP_DAILY_LIMIT_PER_PHONE:10}
     daily-limit-per-ip: ${OTP_DAILY_LIMIT_PER_IP:50}
     pepper: ${OTP_PEPPER:}
+  twilio:
+    account-sid: ${TWILIO_ACCOUNT_SID:}
+    auth-token: ${TWILIO_AUTH_TOKEN:}
+    api-key-sid: ${TWILIO_API_KEY_SID:}
+    api-key-secret: ${TWILIO_API_KEY_SECRET:}
+    from-number: ${TWILIO_FROM_NUMBER:}
+    connect-timeout-ms: ${TWILIO_CONNECT_TIMEOUT_MS:5000}
+    read-timeout-ms: ${TWILIO_READ_TIMEOUT_MS:10000}
   africas-talking:
     base-url: ${AFRICAS_TALKING_BASE_URL:https://api.africastalking.com}
     username: ${AFRICAS_TALKING_USERNAME:}
@@ -66,6 +74,8 @@ motodigo:
     photon-enabled: ${GEO_STACK_PHOTON_ENABLED:false}
     photon-base-url: ${GEO_STACK_PHOTON_BASE_URL:http://localhost:2322}
     photon-timeout-ms: ${GEO_STACK_PHOTON_TIMEOUT_MS:1200}
+    photon-control-url: ${GEO_STACK_PHOTON_CONTROL_URL:}
+    photon-control-timeout-ms: ${GEO_STACK_PHOTON_CONTROL_TIMEOUT_MS:5000}
     valhalla-enabled: ${GEO_STACK_VALHALLA_ENABLED:false}
     valhalla-base-url: ${GEO_STACK_VALHALLA_BASE_URL:http://localhost:8002}
     valhalla-timeout-ms: ${GEO_STACK_VALHALLA_TIMEOUT_MS:12000}

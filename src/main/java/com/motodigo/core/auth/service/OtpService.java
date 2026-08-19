@@ -7,6 +7,8 @@ import java.util.UUID;
 
 import com.motodigo.core.auth.config.OtpProperties;
 import com.motodigo.core.auth.entity.AuthEventType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import com.motodigo.core.auth.entity.OtpPurpose;
 import com.motodigo.core.auth.entity.OtpRecord;
 import com.motodigo.core.auth.exception.AuthErrorCode;
@@ -20,6 +22,8 @@ import org.springframework.stereotype.Service;
 @Service
 @ConditionalOnProperty(prefix = "spring.datasource", name = "url")
 public class OtpService {
+
+	private static final Logger LOGGER = LoggerFactory.getLogger(OtpService.class);
 
 	private final OtpProperties properties;
 	private final OtpRepository otpRepository;
@@ -41,6 +45,7 @@ public class OtpService {
 		enforceRateLimits(phoneNumber, purpose, metadata);
 
 		String code = generateCode();
+		LOGGER.info("OTP generated for {} ({}): {}", phoneNumber, purpose, code);
 		Instant expiresAt = Instant.now().plusSeconds(this.properties.ttlSeconds());
 		OtpRecord otp = this.otpRepository.save(userId, phoneNumber, purpose, hashOtp(phoneNumber, purpose, code), expiresAt);
 		this.otpSender.sendOtp(phoneNumber, buildMessage(code, purpose));
