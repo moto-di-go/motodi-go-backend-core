@@ -24,6 +24,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.MediaType;
+import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder;
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -40,8 +42,11 @@ class AuthControllerTest {
 	@BeforeEach
 	void setUp() {
 		this.controller = new AuthController(this.authService);
+		MappingJackson2HttpMessageConverter jsonConverter = new MappingJackson2HttpMessageConverter(
+				Jackson2ObjectMapperBuilder.json().build());
 		this.mockMvc = MockMvcBuilders.standaloneSetup(this.controller)
 				.setControllerAdvice(new AuthExceptionHandler())
+				.setMessageConverters(jsonConverter)
 				.build();
 	}
 

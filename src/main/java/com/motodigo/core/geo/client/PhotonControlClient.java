@@ -6,6 +6,7 @@ import java.util.Map;
 import com.motodigo.core.geo.config.GeoStackProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -19,6 +20,7 @@ public class PhotonControlClient {
 	private final GeoStackProperties properties;
 	private final RestClient restClient;
 
+	@Autowired
 	public PhotonControlClient(GeoStackProperties properties) {
 		this.properties = properties;
 		if (!properties.photonControlReady()) {
