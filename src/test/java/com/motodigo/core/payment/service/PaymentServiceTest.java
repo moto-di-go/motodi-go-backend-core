@@ -13,25 +13,39 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+import com.motodigo.core.booking.dto.PayableBooking;
+import com.motodigo.core.booking.entity.BookingRecord;
+import com.motodigo.core.booking.entity.BookingStatus;
+import com.motodigo.core.booking.exception.BookingErrorCode;
+import com.motodigo.core.booking.exception.BookingException;
+import com.motodigo.core.booking.service.BookingService;
+import com.motodigo.core.intercity.entity.AnnouncementStatus;
+import com.motodigo.core.intercity.entity.IntercityAnnouncementRecord;
 import com.motodigo.core.payment.client.MobileMoneyClient;
 import com.motodigo.core.payment.client.MobileMoneyCollectionResult;
 import com.motodigo.core.payment.config.PaymentProperties;
 import com.motodigo.core.payment.dto.DepositRequest;
 import com.motodigo.core.payment.dto.DepositResponse;
 import com.motodigo.core.payment.dto.MobileMoneyCallbackRequest;
+import com.motodigo.core.payment.dto.RidePaymentResponse;
 import com.motodigo.core.payment.entity.PaymentProvider;
 import com.motodigo.core.payment.entity.PaymentStatus;
 import com.motodigo.core.payment.entity.PaymentTransactionRecord;
 import com.motodigo.core.payment.entity.PaymentType;
+import com.motodigo.core.payment.entity.ReceiptRecord;
 import com.motodigo.core.payment.exception.PaymentErrorCode;
 import com.motodigo.core.payment.exception.PaymentException;
 import com.motodigo.core.payment.repository.PaymentTransactionRepository;
+import com.motodigo.core.payment.repository.ReceiptRepository;
+import com.motodigo.core.tracking.service.TrackingService;
 import com.motodigo.core.wallet.WalletProvisioningRepository;
 import com.motodigo.core.wallet.entity.LedgerEntryRecord;
 import com.motodigo.core.wallet.entity.LedgerEntryType;
@@ -54,30 +68,47 @@ class PaymentServiceTest {
 	@Mock
 	private PaymentTransactionRepository paymentTransactionRepository;
 	@Mock
+	private ReceiptRepository receiptRepository;
+	@Mock
 	private WalletRepository walletRepository;
 	@Mock
 	private WalletProvisioningRepository walletProvisioningRepository;
 	@Mock
 	private WalletService walletService;
 	@Mock
+	private BookingService bookingService;
+	@Mock
+	private TrackingService trackingService;
+	@Mock
 	private MobileMoneyClient mobileMoneyClient;
 
 	private final Instant now = Instant.parse("2026-08-09T08:00:00Z");
 	private final UUID userId = UUID.randomUUID();
+	private final UUID transporterUserId = UUID.randomUUID();
 	private final UUID walletId = UUID.randomUUID();
+	private final UUID transporterWalletId = UUID.randomUUID();
 	private final UUID paymentId = UUID.randomUUID();
+	private final UUID bookingId = UUID.randomUUID();
+	private final UUID announcementId = UUID.randomUUID();
+	private final UUID passengerProfileId = UUID.randomUUID();
+	private final UUID transporterProfileId = UUID.randomUUID();
+	private final UUID activeProfileId = UUID.randomUUID();
+	private final UUID receiptId = UUID.randomUUID();
 
 	private PaymentService paymentService;
 
 	@BeforeEach
 	void setUp() {
 		PaymentProperties properties = new PaymentProperties(new PaymentProperties.MobileMoney(
-				"stub", Duration.ofMinutes(30), 3000, 5000, Map.of()));
+				"stub", Duration.ofMinutes(30), 3000, 5000, Map.of()), BigDecimal.ZERO);
 		this.paymentService = new PaymentService(
 				this.paymentTransactionRepository,
+				this.receiptRepository,
 				this.walletRepository,
 				this.walletProvisioningRepository,
 				this.walletService,
+				this.bookingService,
+				this.trackingService,
 				this.mobileMoneyClient,
 				properties,
 				Clock.fixed(this.now, ZoneOffset.UTC));
@@ -85,7 +116,7 @@ class PaymentServiceTest {
 
 	@Test
 	void initiateDepositCreatesPendingTransaction() {
-		activeWallet();
+		activePassengerWallet(new BigDecimal("0.00"));
 		PaymentTransactionRecord initiated = deposit(PaymentStatus.INITIATED, null);
 		PaymentTransactionRecord pending = deposit(PaymentStatus.PENDING_CALLBACK, "ext-1");
 		when(this.paymentTransactionRepository.insertDeposit(eq(this.walletId), any(), eq("XAF"),
@@ -117,7 +148,7 @@ class PaymentServiceTest {
 
 	@Test
 	void initiateDepositMarksFailedWhenProviderRefuses() {
-		activeWallet();
+		activePassengerWallet(new BigDecimal("0.00"));
 		PaymentTransactionRecord initiated = deposit(PaymentStatus.INITIATED, null);
 		when(this.paymentTransactionRepository.insertDeposit(any(), any(), any(), any(), any(), any(), any()))
 				.thenReturn(initiated);
@@ -187,7 +218,7 @@ class PaymentServiceTest {
 		PaymentTransactionRecord pending = new PaymentTransactionRecord(
 				this.paymentId, PaymentType.MOBILE_MONEY_DEPOSIT, PaymentStatus.PENDING_CALLBACK,
 				new BigDecimal("5000.00"), "XAF", "ext-exp", null, PaymentProvider.AGGREGATOR, "+237699001122",
-				null, this.walletId, null, this.now.minus(Duration.ofMinutes(45)), null, null, "{}");
+				null, this.walletId, null, null, null, null, this.now.minus(Duration.ofMinutes(45)), null, null, "{}");
 		PaymentTransactionRecord expired = deposit(PaymentStatus.EXPIRED, "ext-exp");
 		when(this.paymentTransactionRepository.findById(this.paymentId)).thenReturn(Optional.of(pending));
 		when(this.paymentTransactionRepository.findWalletOwnerUserId(this.walletId))
@@ -225,9 +256,111 @@ class PaymentServiceTest {
 		assertThat(page.hasMore()).isFalse();
 	}
 
-	private void activeWallet() {
+	@Test
+	void payBookingHappyPathDebitsCreditsMarksPaidAndIssuesReceipt() {
+		BigDecimal amount = new BigDecimal("18000.00");
+		PayableBooking payable = payableBooking(amount, BookingStatus.PENDING_PAYMENT);
+		when(this.bookingService.getPayableBooking(this.userId, this.activeProfileId, this.bookingId))
+				.thenReturn(payable);
+		activePassengerWallet(new BigDecimal("20000.00"));
+		activeTransporterWallet();
+
+		PaymentTransactionRecord initiated = ridePayment(PaymentStatus.INITIATED, amount);
+		PaymentTransactionRecord confirmed = ridePayment(PaymentStatus.CONFIRMED, amount);
+		BookingRecord paidBooking = booking(BookingStatus.PAID);
+		ReceiptRecord receipt = new ReceiptRecord(this.receiptId, this.paymentId, "MDG-20260809-ABCDEF12",
+				amount, "XAF", this.now, "pending://receipt/" + this.paymentId);
+
+		when(this.paymentTransactionRepository.insertRidePayment(eq(this.bookingId), eq(this.walletId),
+				eq(this.transporterWalletId), eq(amount), eq(new BigDecimal("0.00")), eq(amount), eq("pay-1"), any()))
+				.thenReturn(initiated);
+		when(this.walletService.debit(eq(this.walletId), eq(amount), any(), eq("ride-debit:" + this.paymentId),
+				eq(this.paymentId)))
+				.thenReturn(ledger(LedgerEntryType.DEBIT, amount));
+		when(this.walletService.credit(eq(this.transporterWalletId), eq(amount), any(),
+				eq("ride-credit:" + this.paymentId), eq(this.paymentId)))
+				.thenReturn(ledger(LedgerEntryType.CREDIT, amount));
+		when(this.paymentTransactionRepository.markRideConfirmed(this.paymentId)).thenReturn(confirmed);
+		when(this.bookingService.markPaid(this.bookingId)).thenReturn(paidBooking);
+		when(this.bookingService.requireBookingById(this.bookingId)).thenReturn(paidBooking);
+		when(this.receiptRepository.insert(eq(this.paymentId), any(), eq(amount), eq("XAF"), any()))
+				.thenReturn(receipt);
+		when(this.paymentTransactionRepository.findWalletOwnerUserId(this.walletId))
+				.thenReturn(Optional.of(this.userId));
+
+		RidePaymentResponse response = this.paymentService.payBooking(this.userId, this.activeProfileId,
+				this.bookingId, "pay-1");
+
+		assertThat(response.status()).isEqualTo("CONFIRMED");
+		assertThat(response.amount()).isEqualByComparingTo(amount);
+		assertThat(response.transporterAmount()).isEqualByComparingTo(amount);
+		assertThat(response.platformFee()).isEqualByComparingTo("0.00");
+		assertThat(response.booking().status()).isEqualTo("PAID");
+		assertThat(response.receiptId()).isEqualTo(this.receiptId);
+		verify(this.bookingService).markPaid(this.bookingId);
+		verify(this.trackingService).createTripFromPaidBooking(this.bookingId);
+		verify(this.walletService).debit(eq(this.walletId), eq(amount), any(), any(), eq(this.paymentId));
+		verify(this.walletService).credit(eq(this.transporterWalletId), eq(amount), any(), any(), eq(this.paymentId));
+	}
+
+	@Test
+	void payBookingRefusesInsufficientBalanceWithoutMarkingPaid() {
+		BigDecimal amount = new BigDecimal("18000.00");
+		when(this.bookingService.getPayableBooking(this.userId, this.activeProfileId, this.bookingId))
+				.thenReturn(payableBooking(amount, BookingStatus.PENDING_PAYMENT));
+		activePassengerWallet(new BigDecimal("100.00"));
+
+		assertThatThrownBy(() -> this.paymentService.payBooking(this.userId, this.activeProfileId, this.bookingId,
+				"pay-low"))
+				.isInstanceOf(PaymentException.class)
+				.extracting(ex -> ((PaymentException) ex).errorCode())
+				.isEqualTo(PaymentErrorCode.INSUFFICIENT_BALANCE);
+
+		verify(this.paymentTransactionRepository, never()).insertRidePayment(any(), any(), any(), any(), any(), any(),
+				any(), any());
+		verify(this.bookingService, never()).markPaid(any());
+		verify(this.walletService, never()).debit(any(), any(), any(), any(), any());
+	}
+
+	@Test
+	void payBookingRefusesWrongBookingStatus() {
+		when(this.bookingService.getPayableBooking(this.userId, this.activeProfileId, this.bookingId))
+				.thenThrow(new BookingException(BookingErrorCode.BOOKING_NOT_PAYABLE));
+
+		assertThatThrownBy(() -> this.paymentService.payBooking(this.userId, this.activeProfileId, this.bookingId,
+				null))
+				.isInstanceOf(BookingException.class)
+				.extracting(ex -> ((BookingException) ex).errorCode())
+				.isEqualTo(BookingErrorCode.BOOKING_NOT_PAYABLE);
+
+		verify(this.walletService, never()).debit(any(), any(), any(), any(), any());
+		verify(this.bookingService, never()).markPaid(any());
+	}
+
+	private void activePassengerWallet(BigDecimal balance) {
 		when(this.walletRepository.findByUserId(this.userId)).thenReturn(Optional.of(new WalletRecord(
-				this.walletId, this.userId, "XAF", BigDecimal.ZERO, WalletStatus.ACTIVE, this.now, this.now)));
+				this.walletId, this.userId, "XAF", balance, WalletStatus.ACTIVE, this.now, this.now)));
+	}
+
+	private void activeTransporterWallet() {
+		when(this.walletRepository.findByUserId(this.transporterUserId)).thenReturn(Optional.of(new WalletRecord(
+				this.transporterWalletId, this.transporterUserId, "XAF", BigDecimal.ZERO, WalletStatus.ACTIVE,
+				this.now, this.now)));
+	}
+
+	private PayableBooking payableBooking(BigDecimal amount, BookingStatus status) {
+		BookingRecord booking = booking(status);
+		IntercityAnnouncementRecord announcement = new IntercityAnnouncementRecord(
+				this.announcementId, this.transporterProfileId, UUID.randomUUID(), null,
+				"Yaounde", "Douala", "Mvan", LocalDate.of(2026, 8, 20), LocalTime.of(8, 0),
+				new BigDecimal("9000.00"), 4, 2, null, AnnouncementStatus.PUBLISHED, this.now, this.now);
+		return new PayableBooking(booking, announcement, amount, this.transporterUserId);
+	}
+
+	private BookingRecord booking(BookingStatus status) {
+		return new BookingRecord(
+				this.bookingId, this.announcementId, this.passengerProfileId, null, status, 2,
+				"+237670000001", this.now, this.now, null, this.now.plus(Duration.ofMinutes(10)), null);
 	}
 
 	private PaymentTransactionRecord deposit(PaymentStatus status, String externalReference) {
@@ -244,9 +377,40 @@ class PaymentServiceTest {
 				null,
 				this.walletId,
 				null,
+				null,
+				null,
+				null,
 				this.now,
 				status == PaymentStatus.CONFIRMED ? this.now : null,
 				status == PaymentStatus.FAILED || status == PaymentStatus.EXPIRED ? "reason" : null,
 				"{}");
+	}
+
+	private PaymentTransactionRecord ridePayment(PaymentStatus status, BigDecimal amount) {
+		return new PaymentTransactionRecord(
+				this.paymentId,
+				PaymentType.RIDE_PAYMENT,
+				status,
+				amount,
+				"XAF",
+				null,
+				"pay-1",
+				PaymentProvider.WALLET,
+				null,
+				null,
+				this.walletId,
+				this.transporterWalletId,
+				this.bookingId,
+				new BigDecimal("0.00"),
+				amount,
+				this.now,
+				status == PaymentStatus.CONFIRMED ? this.now : null,
+				null,
+				"{}");
+	}
+
+	private LedgerEntryRecord ledger(LedgerEntryType type, BigDecimal amount) {
+		return new LedgerEntryRecord(UUID.randomUUID(), this.walletId, this.paymentId, type, amount, "XAF", "ref",
+				this.now, "key");
 	}
 }

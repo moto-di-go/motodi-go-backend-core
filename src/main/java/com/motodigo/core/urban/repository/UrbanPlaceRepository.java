@@ -47,6 +47,18 @@ public class UrbanPlaceRepository {
 				""", this::map, kind);
 	}
 
+	public List<UrbanPlaceRecord> findNear(double lat, double lon, double radiusKm) {
+		double meters = Math.max(1_000d, radiusKm * 1_000d);
+		return this.jdbcTemplate.query(SELECT + """
+				WHERE ST_DWithin(
+				        geom::geography,
+				        ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography,
+				        ?
+				      )
+				ORDER BY geom <-> ST_SetSRID(ST_MakePoint(?, ?), 4326), sort_order ASC, label ASC
+				""", this::map, lon, lat, meters, lon, lat);
+	}
+
 	private UrbanPlaceRecord map(ResultSet rs, int rowNum) throws SQLException {
 		return new UrbanPlaceRecord(
 				rs.getObject("id", UUID.class),

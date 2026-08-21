@@ -42,4 +42,14 @@ class PhotonClientTest {
 
 		assertThat(PhotonClient.parseFeatures(body).getFirst().kind()).isEqualTo("CITY");
 	}
+
+	@Test
+	void localityBboxUsesCameroonWhenNoBias() {
+		assertThat(PhotonClient.localityBbox(null, null)).isEqualTo(PhotonClient.CAMEROON_BBOX);
+	}
+
+	@Test
+	void localityBboxCentersOnBias() {
+		assertThat(PhotonClient.localityBbox(4.0511, 9.7679)).isEqualTo("9.4179,3.7011,10.1179,4.4011");
+	}
 }

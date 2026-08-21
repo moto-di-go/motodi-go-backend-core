@@ -24,6 +24,10 @@ public class RealtimeHub {
 
 	private static final Logger log = LoggerFactory.getLogger(RealtimeHub.class);
 	private static final long SSE_TIMEOUT_MS = 30 * 60 * 1000L;
+	static final List<String> POLLING_FALLBACKS = List.of(
+			"GET /api/v1/drivers/position",
+			"GET /api/v1/trips/{id}",
+			"GET /api/v1/trips/{id}/events");
 
 	private final List<SseSubscription> sseSubscriptions = new CopyOnWriteArrayList<>();
 	private final List<WebSocketSubscription> wsSubscriptions = new CopyOnWriteArrayList<>();
@@ -43,7 +47,7 @@ public class RealtimeHub {
 		try {
 			Map<String, Object> ready = new HashMap<>();
 			ready.put("channel", subscription.channel());
-			ready.put("fallback", "GET /api/v1/drivers/position");
+			ready.put("fallback", POLLING_FALLBACKS);
 			emitter.send(SseEmitter.event().name("ready").data(ready));
 		}
 		catch (IOException ex) {
@@ -96,7 +100,7 @@ public class RealtimeHub {
 	}
 
 	private boolean sendSse(SseSubscription subscription, RealtimeEvent event, String json) {
-		if (!visibleTo(subscription.channel(), subscription.activeProfileId(), event)) {
+		if (!visibleTo(subscription.channel(), subscription.userId(), subscription.activeProfileId(), event)) {
 			return true;
 		}
 		try {
@@ -113,7 +117,7 @@ public class RealtimeHub {
 		if (!subscription.session().isOpen()) {
 			return false;
 		}
-		if (!visibleTo(subscription.channel(), subscription.activeProfileId(), event)) {
+		if (!visibleTo(subscription.channel(), subscription.userId(), subscription.activeProfileId(), event)) {
 			return true;
 		}
 		try {
@@ -125,9 +129,35 @@ public class RealtimeHub {
 		}
 	}
 
-	private static boolean visibleTo(String channel, UUID activeProfileId, RealtimeEvent event) {
-		if ("trip".equals(channel) || "notification".equals(channel)) {
-			return "trip.status.updated".equals(event.type()) || "notification.created".equals(event.type());
+	/**
+	 * Channel visibility rules:
+	 * <ul>
+	 *   <li>{@code notification} — {@code notification.created} / {@code trip.status.updated} filtered by payload {@code userId}</li>
+	 *   <li>{@code trip} — {@code trip.status.updated} filtered by payload {@code userId}</li>
+	 *   <li>{@code trip:{uuid}} — {@code trip.status.updated} filtered by payload {@code tripId}</li>
+	 *   <li>geo channels (e.g. {@code yaounde}) — driver position for self or city feed</li>
+	 * </ul>
+	 */
+	static boolean visibleTo(String channel, UUID userId, UUID activeProfileId, RealtimeEvent event) {
+		if ("notification".equals(channel)) {
+			if (!"notification.created".equals(event.type()) && !"trip.status.updated".equals(event.type())) {
+				return false;
+			}
+			return matchesPayloadUser(userId, event);
+		}
+		if ("trip".equals(channel)) {
+			if (!"trip.status.updated".equals(event.type())) {
+				return false;
+			}
+			return matchesPayloadUser(userId, event);
+		}
+		if (channel != null && channel.startsWith("trip:")) {
+			if (!"trip.status.updated".equals(event.type())) {
+				return false;
+			}
+			String expectedTripId = channel.substring("trip:".length());
+			Object tripId = event.payload() == null ? null : event.payload().get("tripId");
+			return tripId != null && expectedTripId.equalsIgnoreCase(String.valueOf(tripId));
 		}
 		if (event.driverProfileId() == null) {
 			return true;
@@ -135,11 +165,24 @@ public class RealtimeHub {
 		return "yaounde".equals(channel) || event.driverProfileId().equals(activeProfileId);
 	}
 
+	private static boolean matchesPayloadUser(UUID userId, RealtimeEvent event) {
+		Object payloadUserId = event.payload() == null ? null : event.payload().get("userId");
+		if (payloadUserId != null && userId != null) {
+			return userId.toString().equals(String.valueOf(payloadUserId));
+		}
+		return "notification.created".equals(event.type()) && payloadUserId == null;
+	}
+
 	private static String normalize(String channel) {
 		if (channel == null || channel.isBlank()) {
 			return "yaounde";
 		}
-		return channel.toLowerCase(Locale.ROOT);
+		String normalized = channel.toLowerCase(Locale.ROOT).trim();
+		if (normalized.startsWith("trip:")) {
+			String id = normalized.substring("trip:".length()).trim();
+			return id.isEmpty() ? "trip" : "trip:" + id;
+		}
+		return normalized;
 	}
 
 	private record SseSubscription(UUID userId, UUID activeProfileId, String channel, SseEmitter emitter) {

@@ -1,5 +1,6 @@
 package com.motodigo.core.payment.config;
 
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.Map;
 
@@ -12,12 +13,21 @@ import org.springframework.validation.annotation.Validated;
 @Validated
 @ConfigurationProperties(prefix = "motodigo.payment")
 public record PaymentProperties(
-		@Valid @NotNull MobileMoney mobileMoney) {
+		@Valid @NotNull MobileMoney mobileMoney,
+		BigDecimal platformFeePercent) {
 
 	public PaymentProperties {
 		if (mobileMoney == null) {
 			mobileMoney = MobileMoney.defaults();
 		}
+		if (platformFeePercent == null || platformFeePercent.signum() < 0) {
+			platformFeePercent = BigDecimal.ZERO;
+		}
+	}
+
+	/** Test/helper factory — keep a single canonical ctor for Spring Boot binding. */
+	public static PaymentProperties of(MobileMoney mobileMoney) {
+		return new PaymentProperties(mobileMoney, BigDecimal.ZERO);
 	}
 
 	public record MobileMoney(

@@ -50,7 +50,7 @@ public class KycRepository {
 				       min(d.uploaded_at) FILTER (WHERE d.status = 'PENDING_REVIEW') AS oldest_pending_document_at
 				FROM profiles p
 				JOIN official_documents d ON d.profile_id = p.id
-				WHERE p.type IN ('MOTOTAXI', 'TRANSPORTER')
+				WHERE p.type IN ('PASSENGER', 'MOTOTAXI', 'TRANSPORTER')
 				""");
 		if (profileType != null) {
 			sql.append("  AND p.type = ?\n");

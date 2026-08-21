@@ -2,6 +2,7 @@ package com.motodigo.core.notification.repository;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -64,7 +65,8 @@ public class NotificationInboxRepository {
 				WHERE id = ? AND user_id = ?
 				RETURNING id, user_id, type, title, body, status, scheduled_at, sent_at, read_at,
 				          booking_id, payment_transaction_id, trip_id, created_at, metadata_json::text AS metadata_json
-				""", this::mapRow, readAt, notificationId, userId).stream().findFirst();
+				""", this::mapRow, readAt == null ? null : Timestamp.from(readAt), notificationId, userId)
+				.stream().findFirst();
 	}
 
 	public int markAllRead(UUID userId, Instant readAt) {
@@ -72,7 +74,7 @@ public class NotificationInboxRepository {
 				UPDATE notifications
 				SET status = 'READ', read_at = ?
 				WHERE user_id = ? AND read_at IS NULL
-				""", readAt, userId);
+				""", readAt == null ? null : Timestamp.from(readAt), userId);
 	}
 
 	private NotificationRecord mapRow(ResultSet rs, int rowNum) throws SQLException {

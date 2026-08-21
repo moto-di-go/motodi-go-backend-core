@@ -134,6 +134,17 @@ public class BookingRepository {
 				""", this::mapBooking, Timestamp.from(confirmedAt), Timestamp.from(expiresAt), id);
 	}
 
+	public BookingRecord markPaid(UUID id) {
+		return this.jdbcTemplate.queryForObject("""
+				UPDATE bookings
+				SET status = 'PAID',
+				    expires_at = NULL
+				WHERE id = ? AND status = 'PENDING_PAYMENT'
+				RETURNING id, announcement_id, passenger_profile_id, trip_id, status, seats_requested, contact_phone,
+				          requested_at, confirmed_at, cancelled_at, expires_at, cancellation_reason
+				""", this::mapBooking, id);
+	}
+
 	public List<BookingRecord> findExpiredPendingOrPendingPayment(Instant now, int limit) {
 		return this.jdbcTemplate.query(SELECT_BASE + """
 				WHERE status IN ('PENDING', 'PENDING_PAYMENT')

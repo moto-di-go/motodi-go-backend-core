@@ -4,6 +4,7 @@ import java.util.UUID;
 
 import com.motodigo.core.booking.dto.CancelBookingRequest;
 import com.motodigo.core.booking.service.BookingService;
+import com.motodigo.core.payment.service.PaymentService;
 import jakarta.validation.Valid;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.ResponseEntity;
@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -26,9 +28,11 @@ class BookingController {
 	private static final int MAX_PAGE_SIZE = 100;
 
 	private final BookingService bookingService;
+	private final PaymentService paymentService;
 
-	BookingController(BookingService bookingService) {
+	BookingController(BookingService bookingService, PaymentService paymentService) {
 		this.bookingService = bookingService;
+		this.paymentService = paymentService;
 	}
 
 	@GetMapping("/mine")
@@ -54,6 +58,12 @@ class BookingController {
 	ResponseEntity<?> cancel(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
 			@Valid @RequestBody CancelBookingRequest request) {
 		return ResponseEntity.ok(this.bookingService.cancelBooking(userId(jwt), activeProfileId(jwt), id, request));
+	}
+
+	@PostMapping("/{id}/pay")
+	ResponseEntity<?> pay(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
+			@RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
+		return ResponseEntity.ok(this.paymentService.payBooking(userId(jwt), activeProfileId(jwt), id, idempotencyKey));
 	}
 
 	private static UUID userId(Jwt jwt) {
