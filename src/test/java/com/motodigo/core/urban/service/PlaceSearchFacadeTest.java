@@ -40,7 +40,7 @@ class PlaceSearchFacadeTest {
 				"POI", "Shopping mall", "PHOTON", null);
 		UrbanPlaceResponse photonExtra = new UrbanPlaceResponse(UUID.randomUUID(), "Carrefour Playce", 3.87, 11.52,
 				"POI", "Supermarket · Ekoudou", "PHOTON", null);
-		when(this.urbanPlaceService.geocode(eq("playce"), isNull())).thenReturn(List.of(local));
+		when(this.urbanPlaceService.geocode(eq("playce"), isNull(), eq(3.868), eq(11.516))).thenReturn(List.of(local));
 		when(this.photonClient.search(eq("playce"), eq(3.868), eq(11.516), anyInt(), isNull()))
 				.thenReturn(List.of(photonDup, photonExtra));
 
@@ -57,7 +57,7 @@ class PlaceSearchFacadeTest {
 	@Test
 	void citySuggestUsesKindAndDoesNotBiasToYaounde() {
 		UrbanPlaceResponse douala = UrbanPlaceResponse.local(UUID.randomUUID(), "Douala", 4.05, 9.76, "CITY");
-		when(this.urbanPlaceService.geocode("dou", "CITY")).thenReturn(List.of(douala));
+		when(this.urbanPlaceService.geocode(eq("dou"), eq("CITY"), isNull(), isNull())).thenReturn(List.of(douala));
 		when(this.photonClient.search(eq("dou"), isNull(), isNull(), anyInt(), eq("CITY")))
 				.thenReturn(List.of());
 

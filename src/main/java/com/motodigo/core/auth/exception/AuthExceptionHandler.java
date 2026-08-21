@@ -9,8 +9,10 @@ import com.motodigo.core.geo.exception.GeoException;
 import com.motodigo.core.intercity.exception.IntercityException;
 import com.motodigo.core.kyc.exception.KycException;
 import com.motodigo.core.notification.exception.NotificationException;
+import com.motodigo.core.ops.exception.OpsException;
 import com.motodigo.core.payment.exception.PaymentException;
 import com.motodigo.core.pricing.exception.PricingException;
+import com.motodigo.core.tracking.exception.TrackingException;
 import com.motodigo.core.wallet.exception.WalletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
@@ -80,6 +82,16 @@ public class AuthExceptionHandler {
 
 	@ExceptionHandler(PricingException.class)
 	ResponseEntity<ErrorResponse> handlePricingException(PricingException exception, HttpServletRequest request) {
+		return error(exception.errorCode().status(), exception.errorCode().name(), exception.getMessage(), request);
+	}
+
+	@ExceptionHandler(OpsException.class)
+	ResponseEntity<ErrorResponse> handleOpsException(OpsException exception, HttpServletRequest request) {
+		return error(exception.errorCode().status(), exception.errorCode().name(), exception.getMessage(), request);
+	}
+
+	@ExceptionHandler(TrackingException.class)
+	ResponseEntity<ErrorResponse> handleTrackingException(TrackingException exception, HttpServletRequest request) {
 		return error(exception.errorCode().status(), exception.errorCode().name(), exception.getMessage(), request);
 	}
 

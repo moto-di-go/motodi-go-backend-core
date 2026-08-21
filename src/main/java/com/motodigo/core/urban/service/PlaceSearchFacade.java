@@ -19,6 +19,8 @@ public class PlaceSearchFacade {
 
 	private static final int LIMIT = 15;
 	private static final double DUPLICATE_KM = 0.12;
+	/** Drop pickup / POI hits too far from the chosen departure city. */
+	private static final double MAX_PICKUP_DISTANCE_KM = 45d;
 
 	private final UrbanPlaceService urbanPlaceService;
 	private final PhotonClient photonClient;
@@ -33,12 +35,25 @@ public class PlaceSearchFacade {
 	}
 
 	public List<UrbanPlaceResponse> suggest(String query, Double lat, Double lon, String kind) {
-		List<UrbanPlaceResponse> local = this.urbanPlaceService.geocode(query, kind);
 		boolean city = kind != null && "CITY".equalsIgnoreCase(kind.trim());
 		Double biasLat = city ? null : lat;
 		Double biasLon = city ? null : lon;
+		List<UrbanPlaceResponse> local = this.urbanPlaceService.geocode(query, kind, biasLat, biasLon);
 		List<UrbanPlaceResponse> remote = this.photonClient.search(query, biasLat, biasLon, LIMIT, kind);
-		return merge(local, remote, biasLat, biasLon);
+		List<UrbanPlaceResponse> merged = merge(local, remote, biasLat, biasLon);
+		if (biasLat != null && biasLon != null && !city) {
+			return merged.stream()
+					.filter(place -> {
+						Double km = place.distanceKm();
+						if (km == null) {
+							km = UrbanSearchService.haversineKm(biasLat, biasLon, place.lat(), place.lon());
+						}
+						return km <= MAX_PICKUP_DISTANCE_KM;
+					})
+					.limit(LIMIT)
+					.toList();
+		}
+		return merged;
 	}
 
 	public UrbanPlaceResponse reverse(double lat, double lon) {

@@ -9,6 +9,7 @@ public enum BookingErrorCode {
 	BOOKING_FORBIDDEN(HttpStatus.FORBIDDEN, "Profil non autorise pour cette operation de reservation."),
 	BOOKING_NOT_CANCELLABLE(HttpStatus.CONFLICT, "Cette reservation ne peut pas etre annulee."),
 	BOOKING_NOT_CONFIRMABLE(HttpStatus.CONFLICT, "Cette reservation ne peut pas etre confirmee."),
+	BOOKING_NOT_PAYABLE(HttpStatus.CONFLICT, "Cette reservation ne peut pas etre payee."),
 	BOOKING_DUPLICATE(HttpStatus.CONFLICT, "Une reservation active existe deja pour cette annonce."),
 	BOOKING_OWN_ANNOUNCEMENT(HttpStatus.FORBIDDEN, "Vous ne pouvez pas souscrire à votre propre annonce."),
 	BOOKING_KYC_REQUIRED(HttpStatus.FORBIDDEN, "Validation KYC requise (CNI) avant de souscrire a un trajet."),

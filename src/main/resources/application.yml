@@ -92,6 +92,7 @@ motodigo:
     payment-ttl: ${BOOKING_PAYMENT_TTL:10m}
     expiration-cron: ${BOOKING_EXPIRATION_CRON:0 * * * * *}
   payment:
+    platform-fee-percent: ${PAYMENT_PLATFORM_FEE_PERCENT:0}
     mobile-money:
       mode: ${MOBILE_MONEY_CLIENT_MODE:stub}
       pending-ttl: ${MOBILE_MONEY_PENDING_TTL:30m}
@@ -110,3 +111,8 @@ motodigo:
           base-url: ${AGGREGATOR_BASE_URL:https://placeholder.aggregator.example}
           api-key: ${AGGREGATOR_API_KEY:}
           subscription-key: ${AGGREGATOR_SUBSCRIPTION_KEY:}
+  push:
+    enabled: ${FCM_ENABLED:false}
+    project-id: ${FCM_PROJECT_ID:}
+    credentials-path: ${FCM_CREDENTIALS_PATH:}
+    dispatch-cron: ${FCM_DISPATCH_CRON:0 */1 * * * *}

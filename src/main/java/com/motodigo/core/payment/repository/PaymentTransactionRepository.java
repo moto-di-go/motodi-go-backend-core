@@ -40,6 +40,20 @@ public class PaymentTransactionRepository {
 				metadataJson == null ? "{}" : metadataJson);
 	}
 
+	public PaymentTransactionRecord insertRidePayment(UUID bookingId, UUID passengerWalletId, UUID receiverWalletId,
+			BigDecimal amount, BigDecimal platformFee, BigDecimal transporterAmount, String idempotencyKey,
+			String metadataJson) {
+		return this.jdbcTemplate.queryForObject("""
+				INSERT INTO payment_transactions (
+					type, status, amount, currency, idempotency_key, provider,
+					booking_id, passenger_wallet_id, receiver_wallet_id,
+					platform_fee, transporter_amount, metadata)
+				VALUES ('RIDE_PAYMENT', 'INITIATED', ?, 'XAF', ?, 'WALLET', ?, ?, ?, ?, ?, ?::jsonb)
+				RETURNING *
+				""", this::mapTransaction, amount, idempotencyKey, bookingId, passengerWalletId, receiverWalletId,
+				platformFee, transporterAmount, metadataJson == null ? "{}" : metadataJson);
+	}
+
 	public Optional<PaymentTransactionRecord> findById(UUID id) {
 		return this.jdbcTemplate.query("""
 				SELECT * FROM payment_transactions WHERE id = ?
@@ -102,6 +116,15 @@ public class PaymentTransactionRepository {
 				WHERE id = ? AND status = 'PENDING_CALLBACK'
 				RETURNING *
 				""", this::mapTransaction, callbackSignature, id);
+	}
+
+	public PaymentTransactionRecord markRideConfirmed(UUID id) {
+		return this.jdbcTemplate.queryForObject("""
+				UPDATE payment_transactions
+				SET status = 'CONFIRMED', confirmed_at = now(), failure_reason = NULL
+				WHERE id = ? AND status = 'INITIATED' AND type = 'RIDE_PAYMENT'
+				RETURNING *
+				""", this::mapTransaction, id);
 	}
 
 	public PaymentTransactionRecord markCallbackFailure(UUID id, PaymentStatus status, String failureReason,
@@ -172,6 +195,9 @@ public class PaymentTransactionRepository {
 				rs.getString("callback_signature"),
 				rs.getObject("passenger_wallet_id", UUID.class),
 				rs.getObject("receiver_wallet_id", UUID.class),
+				rs.getObject("booking_id", UUID.class),
+				rs.getBigDecimal("platform_fee"),
+				rs.getBigDecimal("transporter_amount"),
 				instant(rs, "initiated_at"),
 				instant(rs, "confirmed_at"),
 				rs.getString("failure_reason"),

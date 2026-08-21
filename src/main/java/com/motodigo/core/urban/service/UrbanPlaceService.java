@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class UrbanPlaceService {
 
 	private static final int GEOCODE_LIMIT = 15;
+	private static final double NEAR_RADIUS_KM = 45d;
 
 	private final UrbanPlaceRepository urbanPlaceRepository;
 	private final GeoProperties geoProperties;
@@ -37,18 +38,34 @@ public class UrbanPlaceService {
 
 	@Transactional(readOnly = true)
 	public List<UrbanPlaceResponse> geocode(String query) {
-		return geocode(query, null);
+		return geocode(query, null, null, null);
 	}
 
 	@Transactional(readOnly = true)
 	public List<UrbanPlaceResponse> geocode(String query, String kind) {
+		return geocode(query, kind, null, null);
+	}
+
+	@Transactional(readOnly = true)
+	public List<UrbanPlaceResponse> geocode(String query, String kind, Double nearLat, Double nearLon) {
 		String folded = AccentFold.fold(query);
 		if (folded == null) {
 			return List.of();
 		}
-		List<UrbanPlaceRecord> places = kind == null || kind.isBlank()
-				? this.urbanPlaceRepository.findAllInServiceArea()
-				: this.urbanPlaceRepository.findByKind(kind.trim().toUpperCase());
+		boolean city = kind != null && !kind.isBlank() && "CITY".equalsIgnoreCase(kind.trim());
+		List<UrbanPlaceRecord> places;
+		if (city) {
+			places = this.urbanPlaceRepository.findByKind("CITY");
+		}
+		else if (nearLat != null && nearLon != null) {
+			places = this.urbanPlaceRepository.findNear(nearLat, nearLon, NEAR_RADIUS_KM);
+		}
+		else if (kind == null || kind.isBlank()) {
+			places = this.urbanPlaceRepository.findAllInServiceArea();
+		}
+		else {
+			places = this.urbanPlaceRepository.findByKind(kind.trim().toUpperCase());
+		}
 		return search(folded, places);
 	}
 

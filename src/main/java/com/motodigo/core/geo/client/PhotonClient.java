@@ -40,8 +40,9 @@ public class PhotonClient {
 		this.restClient = restClient;
 	}
 
-	static final String YAOUNDE_BBOX = "11.38,3.72,11.64,4.05";
 	static final String CAMEROON_BBOX = "8.45,1.65,16.20,13.08";
+	/** ~0.35° ≈ 35–40 km around a departure city for pickup / POI search. */
+	static final double LOCALITY_BIAS_DEG = 0.35;
 
 	public List<UrbanPlaceResponse> search(String query, Double lat, Double lon, int limit) {
 		return search(query, lat, lon, limit, null);
@@ -65,7 +66,7 @@ public class PhotonClient {
 									.queryParam("osm_tag", "place:city", "place:town", "place:village");
 						}
 						else {
-							builder.queryParam("bbox", YAOUNDE_BBOX);
+							builder.queryParam("bbox", localityBbox(lat, lon));
 							if (lat != null && lon != null) {
 								builder.queryParam("lat", lat).queryParam("lon", lon);
 							}
@@ -87,6 +88,21 @@ public class PhotonClient {
 			log.warn("Photon search unavailable: {}", ex.getMessage());
 			return List.of();
 		}
+	}
+
+	/**
+	 * Prefer a tight bbox around the departure city when bias is known; otherwise all of Cameroon
+	 * (never Yaoundé-only for non-CITY pickup / POI search).
+	 */
+	static String localityBbox(Double lat, Double lon) {
+		if (lat == null || lon == null) {
+			return CAMEROON_BBOX;
+		}
+		double minLon = lon - LOCALITY_BIAS_DEG;
+		double minLat = lat - LOCALITY_BIAS_DEG;
+		double maxLon = lon + LOCALITY_BIAS_DEG;
+		double maxLat = lat + LOCALITY_BIAS_DEG;
+		return String.format(java.util.Locale.US, "%.4f,%.4f,%.4f,%.4f", minLon, minLat, maxLon, maxLat);
 	}
 
 	public boolean isReachable() {

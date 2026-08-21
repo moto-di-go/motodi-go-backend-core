@@ -1,12 +1,21 @@
 package com.motodigo.core.payment.service;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
+import com.motodigo.core.booking.dto.BookingResponse;
+import com.motodigo.core.booking.dto.PayableBooking;
+import com.motodigo.core.booking.entity.BookingRecord;
+import com.motodigo.core.booking.service.BookingService;
+import com.motodigo.core.ops.repository.AdminOpsRepository;
+import com.motodigo.core.ops.service.AdminOpsService;
 import com.motodigo.core.payment.client.MobileMoneyClient;
 import com.motodigo.core.payment.client.MobileMoneyCollectionRequest;
 import com.motodigo.core.payment.client.MobileMoneyCollectionResult;
@@ -15,15 +24,22 @@ import com.motodigo.core.payment.dto.AdminPaymentTransactionPageResponse;
 import com.motodigo.core.payment.dto.DepositRequest;
 import com.motodigo.core.payment.dto.DepositResponse;
 import com.motodigo.core.payment.dto.MobileMoneyCallbackRequest;
+import com.motodigo.core.payment.dto.RidePaymentResponse;
 import com.motodigo.core.payment.entity.PaymentProvider;
 import com.motodigo.core.payment.entity.PaymentStatus;
 import com.motodigo.core.payment.entity.PaymentTransactionRecord;
+import com.motodigo.core.payment.entity.PaymentType;
+import com.motodigo.core.payment.entity.ReceiptRecord;
 import com.motodigo.core.payment.exception.PaymentErrorCode;
 import com.motodigo.core.payment.exception.PaymentException;
 import com.motodigo.core.payment.repository.PaymentTransactionRepository;
+import com.motodigo.core.payment.repository.ReceiptRepository;
+import com.motodigo.core.tracking.service.TrackingService;
 import com.motodigo.core.wallet.WalletProvisioningRepository;
 import com.motodigo.core.wallet.entity.WalletRecord;
 import com.motodigo.core.wallet.entity.WalletStatus;
+import com.motodigo.core.wallet.exception.WalletErrorCode;
+import com.motodigo.core.wallet.exception.WalletException;
 import com.motodigo.core.wallet.repository.WalletRepository;
 import com.motodigo.core.wallet.service.WalletService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -39,37 +55,68 @@ public class PaymentService {
 	public static final String ADMIN_RECONCILE_PERMISSION = "PAYMENT_RECONCILE_READ";
 
 	private final PaymentTransactionRepository paymentTransactionRepository;
+	private final ReceiptRepository receiptRepository;
 	private final WalletRepository walletRepository;
 	private final WalletProvisioningRepository walletProvisioningRepository;
 	private final WalletService walletService;
+	private final BookingService bookingService;
+	private final TrackingService trackingService;
 	private final MobileMoneyClient mobileMoneyClient;
 	private final PaymentProperties paymentProperties;
+	private final AdminOpsRepository adminOpsRepository;
 	private final Clock clock;
 
 	@Autowired
 	public PaymentService(PaymentTransactionRepository paymentTransactionRepository,
+			ReceiptRepository receiptRepository,
 			WalletRepository walletRepository,
 			WalletProvisioningRepository walletProvisioningRepository,
 			WalletService walletService,
+			BookingService bookingService,
+			TrackingService trackingService,
 			MobileMoneyClient mobileMoneyClient,
-			PaymentProperties paymentProperties) {
-		this(paymentTransactionRepository, walletRepository, walletProvisioningRepository, walletService,
-				mobileMoneyClient, paymentProperties, Clock.systemUTC());
+			PaymentProperties paymentProperties,
+			AdminOpsRepository adminOpsRepository) {
+		this(paymentTransactionRepository, receiptRepository, walletRepository, walletProvisioningRepository,
+				walletService, bookingService, trackingService, mobileMoneyClient, paymentProperties,
+				adminOpsRepository, Clock.systemUTC());
 	}
 
 	PaymentService(PaymentTransactionRepository paymentTransactionRepository,
+			ReceiptRepository receiptRepository,
 			WalletRepository walletRepository,
 			WalletProvisioningRepository walletProvisioningRepository,
 			WalletService walletService,
+			BookingService bookingService,
+			TrackingService trackingService,
 			MobileMoneyClient mobileMoneyClient,
 			PaymentProperties paymentProperties,
 			Clock clock) {
+		this(paymentTransactionRepository, receiptRepository, walletRepository, walletProvisioningRepository,
+				walletService, bookingService, trackingService, mobileMoneyClient, paymentProperties, null, clock);
+	}
+
+	PaymentService(PaymentTransactionRepository paymentTransactionRepository,
+			ReceiptRepository receiptRepository,
+			WalletRepository walletRepository,
+			WalletProvisioningRepository walletProvisioningRepository,
+			WalletService walletService,
+			BookingService bookingService,
+			TrackingService trackingService,
+			MobileMoneyClient mobileMoneyClient,
+			PaymentProperties paymentProperties,
+			AdminOpsRepository adminOpsRepository,
+			Clock clock) {
 		this.paymentTransactionRepository = paymentTransactionRepository;
+		this.receiptRepository = receiptRepository;
 		this.walletRepository = walletRepository;
 		this.walletProvisioningRepository = walletProvisioningRepository;
 		this.walletService = walletService;
+		this.bookingService = bookingService;
+		this.trackingService = trackingService;
 		this.mobileMoneyClient = mobileMoneyClient;
 		this.paymentProperties = paymentProperties;
+		this.adminOpsRepository = adminOpsRepository;
 		this.clock = clock == null ? Clock.systemUTC() : clock;
 	}
 
@@ -137,6 +184,92 @@ public class PaymentService {
 		}
 	}
 
+	/**
+	 * Atomically pays a {@code PENDING_PAYMENT} booking from the passenger wallet (CORE-PAY-002).
+	 *
+	 * <p>Debits the passenger, credits the transporter (minus platform fee), marks the booking
+	 * {@code PAID}, confirms the ride payment and issues a receipt. Insufficient balance fails
+	 * without mutating the booking (transaction rollback).
+	 */
+	@Transactional
+	public RidePaymentResponse payBooking(UUID userId, UUID activeProfileId, UUID bookingId, String idempotencyKey) {
+		String normalizedKey = blankToNull(idempotencyKey);
+		if (normalizedKey != null) {
+			var existing = this.paymentTransactionRepository.findByIdempotencyKey(normalizedKey);
+			if (existing.isPresent()) {
+				return toRidePaymentResponse(existing.get());
+			}
+		}
+
+		PayableBooking payable = this.bookingService.getPayableBooking(userId, activeProfileId, bookingId);
+		WalletRecord passengerWallet = requireActiveWallet(userId);
+		if (passengerWallet.currentBalance().compareTo(payable.amount()) < 0) {
+			throw new PaymentException(PaymentErrorCode.INSUFFICIENT_BALANCE);
+		}
+
+		WalletRecord transporterWallet = requireActiveWallet(payable.transporterUserId());
+		BigDecimal platformFee = computePlatformFee(payable.amount());
+		BigDecimal transporterAmount = payable.amount().subtract(platformFee);
+
+		PaymentTransactionRecord created;
+		try {
+			created = this.paymentTransactionRepository.insertRidePayment(
+					payable.booking().id(),
+					passengerWallet.id(),
+					transporterWallet.id(),
+					payable.amount(),
+					platformFee,
+					transporterAmount,
+					normalizedKey,
+					"{}");
+		}
+		catch (DuplicateKeyException ex) {
+			if (normalizedKey != null) {
+				return this.paymentTransactionRepository.findByIdempotencyKey(normalizedKey)
+						.map(this::toRidePaymentResponse)
+						.orElseThrow(() -> new PaymentException(PaymentErrorCode.PAYMENT_VALIDATION_FAILED));
+			}
+			throw new PaymentException(PaymentErrorCode.PAYMENT_VALIDATION_FAILED);
+		}
+
+		try {
+			this.walletService.debit(
+					passengerWallet.id(),
+					payable.amount(),
+					"RIDE_PAYMENT:" + created.id(),
+					"ride-debit:" + created.id(),
+					created.id());
+			this.walletService.credit(
+					transporterWallet.id(),
+					transporterAmount,
+					"RIDE_PAYMENT:" + created.id(),
+					"ride-credit:" + created.id(),
+					created.id());
+		}
+		catch (WalletException ex) {
+			if (ex.errorCode() == WalletErrorCode.INSUFFICIENT_BALANCE) {
+				throw new PaymentException(PaymentErrorCode.INSUFFICIENT_BALANCE);
+			}
+			if (ex.errorCode() == WalletErrorCode.WALLET_NOT_ACTIVE) {
+				throw new PaymentException(PaymentErrorCode.WALLET_NOT_ACTIVE);
+			}
+			throw new PaymentException(PaymentErrorCode.RIDE_PAYMENT_FAILED);
+		}
+
+		PaymentTransactionRecord confirmed = this.paymentTransactionRepository.markRideConfirmed(created.id());
+		BookingRecord paidBooking = this.bookingService.markPaid(payable.booking().id());
+		this.trackingService.createTripFromPaidBooking(paidBooking.id());
+		paidBooking = this.bookingService.requireBookingById(paidBooking.id());
+		ReceiptRecord receipt = issueReceipt(confirmed);
+
+		queueNotification(confirmed, "Paiement confirme",
+				"Votre paiement de " + confirmed.amount() + " " + confirmed.currency() + " a ete confirme.");
+		queueNotificationForUser(payable.transporterUserId(), confirmed, "Paiement recu",
+				"Vous avez recu " + transporterAmount + " " + confirmed.currency() + " pour une reservation.");
+
+		return RidePaymentResponse.from(confirmed, receipt, BookingResponse.from(paidBooking));
+	}
+
 	@Transactional
 	public DepositResponse getDepositForUser(UUID userId, UUID depositId) {
 		PaymentTransactionRecord tx = this.paymentTransactionRepository.findById(depositId)
@@ -191,16 +324,71 @@ public class PaymentService {
 		List<PaymentTransactionRecord> rows = this.paymentTransactionRepository.findForAdmin(
 				provider, status, externalReference, size + 1, page * size);
 		boolean hasMore = rows.size() > size;
-		List<DepositResponse> transactions = rows.stream().limit(size).map(DepositResponse::from).toList();
+		boolean revealSensitive = canRevealSensitive(adminAccess);
+		List<DepositResponse> transactions = rows.stream()
+				.limit(size)
+				.map(tx -> maskDeposit(DepositResponse.from(tx), revealSensitive))
+				.toList();
 		return new AdminPaymentTransactionPageResponse(transactions, page, size, hasMore);
 	}
 
 	@Transactional(readOnly = true)
 	public DepositResponse getForAdmin(AdminAccess adminAccess, UUID paymentId) {
 		requireAdminReconcile(adminAccess);
-		return this.paymentTransactionRepository.findById(paymentId)
+		DepositResponse response = this.paymentTransactionRepository.findById(paymentId)
 				.map(DepositResponse::from)
 				.orElseThrow(() -> new PaymentException(PaymentErrorCode.DEPOSIT_NOT_FOUND));
+		return maskDeposit(response, canRevealSensitive(adminAccess));
+	}
+
+	private boolean canRevealSensitive(AdminAccess adminAccess) {
+		if (this.adminOpsRepository == null || adminAccess == null || adminAccess.actorProfileId() == null) {
+			return false;
+		}
+		return this.adminOpsRepository.findAdminRole(adminAccess.actorProfileId())
+				.map(AdminOpsService.FULL_ADMIN_ROLE::equals)
+				.orElse(false);
+	}
+
+	private static DepositResponse maskDeposit(DepositResponse response, boolean revealSensitive) {
+		return new DepositResponse(
+				response.id(),
+				response.status(),
+				response.amount(),
+				response.currency(),
+				response.provider(),
+				AdminOpsService.maskPhone(response.payerPhone(), revealSensitive),
+				response.externalReference(),
+				response.failureReason(),
+				response.initiatedAt(),
+				response.confirmedAt());
+	}
+
+	private RidePaymentResponse toRidePaymentResponse(PaymentTransactionRecord tx) {
+		if (tx.type() != PaymentType.RIDE_PAYMENT) {
+			throw new PaymentException(PaymentErrorCode.PAYMENT_VALIDATION_FAILED);
+		}
+		ReceiptRecord receipt = this.receiptRepository.findByPaymentTransactionId(tx.id()).orElse(null);
+		BookingResponse booking = tx.bookingId() == null ? null
+				: BookingResponse.from(this.bookingService.requireBookingById(tx.bookingId()));
+		return RidePaymentResponse.from(tx, receipt, booking);
+	}
+
+	private ReceiptRecord issueReceipt(PaymentTransactionRecord confirmed) {
+		String receiptNumber = "MDG-" + LocalDate.now(this.clock.withZone(ZoneOffset.UTC))
+				+ "-" + confirmed.id().toString().substring(0, 8).toUpperCase(Locale.ROOT);
+		String pdfUrl = "pending://receipt/" + confirmed.id();
+		return this.receiptRepository.insert(confirmed.id(), receiptNumber, confirmed.amount(), confirmed.currency(),
+				pdfUrl);
+	}
+
+	private BigDecimal computePlatformFee(BigDecimal amount) {
+		BigDecimal percent = this.paymentProperties.platformFeePercent();
+		if (percent == null || percent.signum() <= 0) {
+			return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+		}
+		return amount.multiply(percent)
+				.divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
 	}
 
 	private DepositResponse confirmAndCredit(PaymentTransactionRecord locked, String signature) {
@@ -227,6 +415,10 @@ public class PaymentService {
 
 	private void queueNotification(PaymentTransactionRecord tx, String title, String body) {
 		UUID userId = this.paymentTransactionRepository.findWalletOwnerUserId(tx.passengerWalletId()).orElse(null);
+		queueNotificationForUser(userId, tx, title, body);
+	}
+
+	private void queueNotificationForUser(UUID userId, PaymentTransactionRecord tx, String title, String body) {
 		if (userId == null) {
 			return;
 		}

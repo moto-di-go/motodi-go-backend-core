@@ -35,9 +35,9 @@ class RealtimeController {
 	Map<String, Object> channels() {
 		return Map.of(
 				"gps", "driver.position.updated",
-				"trip", "trip.status.updated",
+				"trip", "trip.status.updated (channel=trip filters by userId; channel=trip:{uuid} by tripId)",
 				"notification", "notification.created",
-				"fallback", "GET /api/v1/drivers/position");
+				"fallback", RealtimeHub.POLLING_FALLBACKS);
 	}
 
 	private static void requireJwt(Jwt jwt) {

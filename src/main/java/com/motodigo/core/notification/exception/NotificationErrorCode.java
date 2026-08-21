@@ -4,7 +4,8 @@ import org.springframework.http.HttpStatus;
 
 public enum NotificationErrorCode {
 	NOTIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "Notification introuvable."),
-	NOTIFICATION_FORBIDDEN(HttpStatus.FORBIDDEN, "Acces a cette notification refuse.");
+	NOTIFICATION_FORBIDDEN(HttpStatus.FORBIDDEN, "Acces a cette notification refuse."),
+	DEVICE_TOKEN_INVALID(HttpStatus.BAD_REQUEST, "Jeton appareil invalide.");
 
 	private final HttpStatus status;
 	private final String message;

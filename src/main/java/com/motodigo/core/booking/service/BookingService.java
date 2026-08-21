@@ -1,5 +1,6 @@
 package com.motodigo.core.booking.service;
 
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -12,6 +13,7 @@ import com.motodigo.core.booking.dto.BookingPageResponse;
 import com.motodigo.core.booking.dto.BookingResponse;
 import com.motodigo.core.booking.dto.CancelBookingRequest;
 import com.motodigo.core.booking.dto.CreateBookingRequest;
+import com.motodigo.core.booking.dto.PayableBooking;
 import com.motodigo.core.booking.entity.BookingRecord;
 import com.motodigo.core.booking.entity.BookingStatus;
 import com.motodigo.core.booking.entity.SeatLockRecord;
@@ -207,6 +209,55 @@ public class BookingService {
 		List<BookingRecord> rows = this.bookingRepository.findByPassenger(passenger.id(), safeSize + 1,
 				safePage * safeSize);
 		return toPage(rows, safePage, safeSize);
+	}
+
+	/**
+	 * Locks a passenger-owned {@code PENDING_PAYMENT} booking for ride payment (CORE-PAY-002).
+	 */
+	@Transactional
+	public PayableBooking getPayableBooking(UUID userId, UUID activeProfileId, UUID bookingId) {
+		ProfileRecord passenger = requirePassengerProfile(userId, activeProfileId);
+		BookingRecord booking = this.bookingRepository.lockByIdForUpdate(bookingId)
+				.orElseThrow(() -> new BookingException(BookingErrorCode.BOOKING_NOT_FOUND));
+		if (!booking.passengerProfileId().equals(passenger.id())) {
+			throw new BookingException(BookingErrorCode.BOOKING_FORBIDDEN);
+		}
+		if (booking.status() != BookingStatus.PENDING_PAYMENT) {
+			throw new BookingException(BookingErrorCode.BOOKING_NOT_PAYABLE);
+		}
+		Instant now = Instant.now(this.clock);
+		if (booking.expiresAt() != null && !booking.expiresAt().isAfter(now)) {
+			throw new BookingException(BookingErrorCode.BOOKING_NOT_PAYABLE,
+					"La fenetre de paiement de cette reservation a expire.");
+		}
+
+		IntercityAnnouncementRecord announcement = this.announcementSeatInventory.findById(booking.announcementId())
+				.orElseThrow(() -> new BookingException(BookingErrorCode.BOOKING_NOT_FOUND));
+		ProfileRecord publisher = this.profileRepository.findById(announcement.publisherProfileId())
+				.orElseThrow(() -> new BookingException(BookingErrorCode.BOOKING_NOT_FOUND));
+
+		BigDecimal amount = announcement.priceFcfa().multiply(BigDecimal.valueOf(booking.seatsRequested()));
+		return new PayableBooking(booking, announcement, amount, publisher.userId());
+	}
+
+	/**
+	 * Marks booking PAID and consumes the seat lock without releasing seats.
+	 */
+	@Transactional
+	public BookingRecord markPaid(UUID bookingId) {
+		BookingRecord paid = this.bookingRepository.markPaid(bookingId);
+		this.seatLockRepository.lockByBookingIdForUpdate(bookingId).ifPresent(lock -> {
+			if (!lock.consumed()) {
+				this.seatLockRepository.markConsumed(lock.id());
+			}
+		});
+		return paid;
+	}
+
+	@Transactional(readOnly = true)
+	public BookingRecord requireBookingById(UUID bookingId) {
+		return this.bookingRepository.findById(bookingId)
+				.orElseThrow(() -> new BookingException(BookingErrorCode.BOOKING_NOT_FOUND));
 	}
 
 	@Transactional(readOnly = true)
