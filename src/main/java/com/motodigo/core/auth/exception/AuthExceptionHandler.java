@@ -3,6 +3,8 @@ package com.motodigo.core.auth.exception;
 import java.time.Instant;
 import java.util.stream.Collectors;
 
+import com.motodigo.core.agency.exception.AgencyException;
+import com.motodigo.core.analytics.exception.AnalyticsException;
 import com.motodigo.core.auth.dto.ErrorResponse;
 import com.motodigo.core.booking.exception.BookingException;
 import com.motodigo.core.geo.exception.GeoException;
@@ -96,6 +98,16 @@ public class AuthExceptionHandler {
 
 	@ExceptionHandler(OpsException.class)
 	ResponseEntity<ErrorResponse> handleOpsException(OpsException exception, HttpServletRequest request) {
+		return error(exception.errorCode().status(), exception.errorCode().name(), exception.getMessage(), request);
+	}
+
+	@ExceptionHandler(AnalyticsException.class)
+	ResponseEntity<ErrorResponse> handleAnalyticsException(AnalyticsException exception, HttpServletRequest request) {
+		return error(exception.errorCode().status(), exception.errorCode().name(), exception.getMessage(), request);
+	}
+
+	@ExceptionHandler(AgencyException.class)
+	ResponseEntity<ErrorResponse> handleAgencyException(AgencyException exception, HttpServletRequest request) {
 		return error(exception.errorCode().status(), exception.errorCode().name(), exception.getMessage(), request);
 	}
 

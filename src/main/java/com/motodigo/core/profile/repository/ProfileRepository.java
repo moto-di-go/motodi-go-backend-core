@@ -39,6 +39,7 @@ public class ProfileRepository {
 			       ap.legal_name,
 			       ap.trade_register_number,
 			       ap.billing_plan,
+			       ap.display_priority,
 			       adm.admin_role,
 			       adm.permissions
 			FROM profiles p
@@ -155,9 +156,10 @@ public class ProfileRepository {
 			}
 			case AGENCY -> this.jdbcTemplate.update("""
 					INSERT INTO agency_profiles (profile_id, legal_name, trade_register_number, billing_plan)
-					VALUES (?, ?, ?, ?)
+					VALUES (?, ?, ?, COALESCE(?, 'STANDARD'))
 					""", profileId, blankToNull(request.agency().legalName()),
-					blankToNull(request.agency().tradeRegisterNumber()), blankToNull(request.agency().billingPlan()));
+					blankToNull(request.agency().tradeRegisterNumber()),
+					normalizeAgencyBillingPlan(request.agency().billingPlan()));
 			case ADMIN -> throw new IllegalArgumentException("ADMIN profile creation is not self-service");
 		}
 	}
@@ -208,7 +210,8 @@ public class ProfileRepository {
 							    billing_plan = COALESCE(?, billing_plan)
 							WHERE profile_id = ?
 							""", blankToNull(request.agency().legalName()),
-							blankToNull(request.agency().tradeRegisterNumber()), blankToNull(request.agency().billingPlan()),
+							blankToNull(request.agency().tradeRegisterNumber()),
+							normalizeAgencyBillingPlan(request.agency().billingPlan()),
 							existing.id());
 				}
 			}
@@ -275,7 +278,8 @@ public class ProfileRepository {
 				type == ProfileType.AGENCY ? new ProfileRecord.AgencyDetails(
 						rs.getString("legal_name"),
 						rs.getString("trade_register_number"),
-						rs.getString("billing_plan")) : null,
+						rs.getString("billing_plan"),
+						(Integer) rs.getObject("display_priority")) : null,
 				type == ProfileType.ADMIN ? new ProfileRecord.AdminDetails(
 						rs.getString("admin_role"),
 						permissions(rs.getArray("permissions"))) : null);
@@ -306,5 +310,16 @@ public class ProfileRepository {
 
 	private static String blankToNull(String value) {
 		return value == null || value.isBlank() ? null : value;
+	}
+
+	private static String normalizeAgencyBillingPlan(String billingPlan) {
+		if (billingPlan == null || billingPlan.isBlank()) {
+			return null;
+		}
+		String normalized = billingPlan.trim().toUpperCase();
+		if ("PREMIUM".equals(normalized) || "STANDARD".equals(normalized)) {
+			return normalized;
+		}
+		return "STANDARD";
 	}
 }
