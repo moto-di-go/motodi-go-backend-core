@@ -9,7 +9,13 @@ public record WalletRecord(
 		UUID userId,
 		String currency,
 		BigDecimal currentBalance,
+		BigDecimal heldBalance,
 		WalletStatus status,
 		Instant createdAt,
 		Instant updatedAt) {
+
+	public BigDecimal availableBalance() {
+		BigDecimal held = heldBalance == null ? BigDecimal.ZERO : heldBalance;
+		return currentBalance.subtract(held);
+	}
 }

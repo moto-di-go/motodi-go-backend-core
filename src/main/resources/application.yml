@@ -111,6 +111,15 @@ motodigo:
           base-url: ${AGGREGATOR_BASE_URL:https://placeholder.aggregator.example}
           api-key: ${AGGREGATOR_API_KEY:}
           subscription-key: ${AGGREGATOR_SUBSCRIPTION_KEY:}
+  nfc:
+    signing-secret: ${NFC_SIGNING_SECRET:change-me-nfc-signing-secret-32b}
+    ttl: ${NFC_TOKEN_TTL:5m}
+    max-amount: ${NFC_MAX_AMOUNT:50000}
+    offline-quota-amount: ${NFC_OFFLINE_QUOTA_AMOUNT:20000}
+    offline-quota-ttl: ${NFC_OFFLINE_QUOTA_TTL:24h}
+  offline:
+    map-base-url: ${OFFLINE_MAP_BASE_URL:http://localhost:9000/motodigo-maps}
+    map-pack-ttl-days: ${OFFLINE_MAP_PACK_TTL_DAYS:30}
   push:
     enabled: ${FCM_ENABLED:false}
     project-id: ${FCM_PROJECT_ID:}

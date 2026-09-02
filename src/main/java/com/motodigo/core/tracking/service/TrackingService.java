@@ -26,6 +26,8 @@ import com.motodigo.core.profile.repository.ProfileRepository;
 import com.motodigo.core.realtime.RealtimeHub;
 import com.motodigo.core.tracking.dto.ActiveTripsResponse;
 import com.motodigo.core.tracking.dto.TripEventResponse;
+import com.motodigo.core.tracking.dto.TripHistoryItem;
+import com.motodigo.core.tracking.dto.TripHistoryPageResponse;
 import com.motodigo.core.tracking.dto.TripResponse;
 import com.motodigo.core.tracking.entity.TripEventRecord;
 import com.motodigo.core.tracking.entity.TripRecord;
@@ -200,8 +202,26 @@ public class TrackingService {
 				TripStatus.COMPLETED.label(), "COMPLETE", now);
 
 		notifyStatusChange(updated, TripStatus.COMPLETED, actor.id());
+		notifyTripCompleted(updated);
 		publishStatusUpdated(updated, TripStatus.COMPLETED, event.id());
 		return toResponseWithPosition(updated);
+	}
+
+	@Transactional(readOnly = true)
+	public TripHistoryPageResponse getHistory(UUID userId, UUID activeProfileId, String tab, Instant from, Instant to,
+			String status, String paymentStatus, String tripType, int page, int size) {
+		ProfileRecord profile = requireActiveProfile(userId, activeProfileId);
+		int safePage = Math.max(page, 0);
+		int safeSize = Math.max(1, Math.min(size, 100));
+		List<TripRepository.TripHistoryRow> rows = this.tripRepository.findHistoryForProfile(profile.id(), userId, tab,
+				from, to, status, paymentStatus, tripType, safeSize + 1, safePage * safeSize);
+		boolean hasMore = rows.size() > safeSize;
+		List<TripHistoryItem> items = rows.stream().limit(safeSize)
+				.map(row -> new TripHistoryItem(row.id(), row.kind(), row.tripType(), row.status(), row.origin(),
+						row.destination(), row.amount(), row.paymentStatus(), row.receiptId(), row.ratingSubmitted(),
+						row.createdAt(), row.completedAt()))
+				.toList();
+		return new TripHistoryPageResponse(items, safePage, safeSize, hasMore);
 	}
 
 	@Transactional(readOnly = true)
@@ -251,6 +271,22 @@ public class TrackingService {
 				&& !Objects.equals(trip.driverProfileId(), trip.transporterProfileId())
 				&& !Objects.equals(trip.driverProfileId(), trip.announcementPublisherProfileId())) {
 			notifyProfile(trip.driverProfileId(), trip, title, body, metadata);
+		}
+	}
+
+	private void notifyTripCompleted(TripRecord trip) {
+		String title = "Trajet termine";
+		String body = "Votre trajet est termine. Merci de noter votre experience.";
+		String metadata = "{\"tripId\":\"" + trip.id() + "\",\"type\":\"TRIP_COMPLETED\"}";
+		this.profileRepository.findById(trip.passengerProfileId()).ifPresent(profile -> this.notificationDispatchService
+				.enqueue(profile.userId(), "TRIP_COMPLETED", title, body, trip.bookingId(), null, trip.id(), metadata));
+		if (trip.driverProfileId() != null) {
+			this.profileRepository.findById(trip.driverProfileId()).ifPresent(profile -> {
+				if (!Objects.equals(profile.id(), trip.passengerProfileId())) {
+					this.notificationDispatchService.enqueue(profile.userId(), "TRIP_COMPLETED", title, body,
+							trip.bookingId(), null, trip.id(), metadata);
+				}
+			});
 		}
 	}
 

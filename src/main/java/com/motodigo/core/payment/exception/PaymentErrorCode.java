@@ -10,7 +10,8 @@ public enum PaymentErrorCode {
 	CALLBACK_TRANSACTION_NOT_FOUND(HttpStatus.NOT_FOUND, "Transaction introuvable pour ce callback."),
 	WALLET_NOT_ACTIVE(HttpStatus.CONFLICT, "Le portefeuille n'est pas actif."),
 	INSUFFICIENT_BALANCE(HttpStatus.UNPROCESSABLE_ENTITY, "Solde insuffisant pour payer cette reservation."),
-	RIDE_PAYMENT_FAILED(HttpStatus.CONFLICT, "Le paiement du trajet a echoue.");
+	RIDE_PAYMENT_FAILED(HttpStatus.CONFLICT, "Le paiement du trajet a echoue."),
+	RECEIPT_NOT_FOUND(HttpStatus.NOT_FOUND, "Recu introuvable.");
 
 	private final HttpStatus status;
 	private final String message;

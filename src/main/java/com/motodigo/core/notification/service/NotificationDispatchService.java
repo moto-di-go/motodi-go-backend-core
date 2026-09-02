@@ -161,9 +161,10 @@ public class NotificationDispatchService {
 			return true;
 		}
 		return switch (type) {
-			case "SUBSCRIPTION", "CONFIRMATION", "CANCELLATION", "EXPIRATION", "DEPARTURE_REMINDER", "STATUS_CHANGE"
-					-> prefs.bookingUpdates();
-			case "PAYMENT" -> prefs.paymentAlerts();
+			case "SUBSCRIPTION", "CONFIRMATION", "CANCELLATION", "EXPIRATION", "DEPARTURE_REMINDER", "STATUS_CHANGE",
+					"TRIP_COMPLETED" -> prefs.bookingUpdates();
+			case "PAYMENT", "RATING" -> prefs.paymentAlerts();
+			case "SUPPORT", "KYC_DECISION" -> true;
 			default -> true;
 		};
 	}

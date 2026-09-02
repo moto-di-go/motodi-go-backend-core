@@ -339,13 +339,14 @@ class PaymentServiceTest {
 
 	private void activePassengerWallet(BigDecimal balance) {
 		when(this.walletRepository.findByUserId(this.userId)).thenReturn(Optional.of(new WalletRecord(
-				this.walletId, this.userId, "XAF", balance, WalletStatus.ACTIVE, this.now, this.now)));
+				this.walletId, this.userId, "XAF", balance, BigDecimal.ZERO, WalletStatus.ACTIVE, this.now,
+				this.now)));
 	}
 
 	private void activeTransporterWallet() {
 		when(this.walletRepository.findByUserId(this.transporterUserId)).thenReturn(Optional.of(new WalletRecord(
-				this.transporterWalletId, this.transporterUserId, "XAF", BigDecimal.ZERO, WalletStatus.ACTIVE,
-				this.now, this.now)));
+				this.transporterWalletId, this.transporterUserId, "XAF", BigDecimal.ZERO, BigDecimal.ZERO,
+				WalletStatus.ACTIVE, this.now, this.now)));
 	}
 
 	private PayableBooking payableBooking(BigDecimal amount, BookingStatus status) {

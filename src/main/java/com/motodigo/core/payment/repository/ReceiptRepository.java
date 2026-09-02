@@ -3,8 +3,8 @@ package com.motodigo.core.payment.repository;
 import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -36,6 +36,30 @@ public class ReceiptRepository {
 		return this.jdbcTemplate.query("""
 				SELECT * FROM receipts WHERE payment_transaction_id = ?
 				""", this::mapReceipt, paymentTransactionId).stream().findFirst();
+	}
+
+	public List<ReceiptRecord> listForUser(UUID userId, int limit, int offset) {
+		return this.jdbcTemplate.query("""
+				SELECT r.*
+				FROM receipts r
+				INNER JOIN payment_transactions pt ON pt.id = r.payment_transaction_id
+				LEFT JOIN wallets pw ON pw.id = pt.passenger_wallet_id
+				LEFT JOIN wallets rw ON rw.id = pt.receiver_wallet_id
+				WHERE pw.user_id = ? OR rw.user_id = ?
+				ORDER BY r.issued_at DESC
+				LIMIT ? OFFSET ?
+				""", this::mapReceipt, userId, userId, limit, offset);
+	}
+
+	public Optional<ReceiptRecord> findByIdForUser(UUID receiptId, UUID userId) {
+		return this.jdbcTemplate.query("""
+				SELECT r.*
+				FROM receipts r
+				INNER JOIN payment_transactions pt ON pt.id = r.payment_transaction_id
+				LEFT JOIN wallets pw ON pw.id = pt.passenger_wallet_id
+				LEFT JOIN wallets rw ON rw.id = pt.receiver_wallet_id
+				WHERE r.id = ? AND (pw.user_id = ? OR rw.user_id = ?)
+				""", this::mapReceipt, receiptId, userId, userId).stream().findFirst();
 	}
 
 	private ReceiptRecord mapReceipt(ResultSet rs, int rowNum) throws SQLException {
