@@ -35,7 +35,8 @@ public record ProfileRecord(
 	public record TransporterDetails(String permitNumber, String companyName, UUID vehicleId) {
 	}
 
-	public record AgencyDetails(String legalName, String tradeRegisterNumber, String billingPlan) {
+	public record AgencyDetails(String legalName, String tradeRegisterNumber, String billingPlan,
+			Integer displayPriority) {
 	}
 
 	public record AdminDetails(String adminRole, List<String> permissions) {

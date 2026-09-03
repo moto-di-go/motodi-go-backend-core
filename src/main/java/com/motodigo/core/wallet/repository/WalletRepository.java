@@ -58,6 +58,24 @@ public class WalletRepository {
 				""", this::mapWallet, newBalance, walletId);
 	}
 
+	public WalletRecord updateHeldBalance(UUID walletId, BigDecimal heldBalance) {
+		return this.jdbcTemplate.queryForObject("""
+				UPDATE wallets
+				SET held_balance = ?, updated_at = now()
+				WHERE id = ?
+				RETURNING *
+				""", this::mapWallet, heldBalance, walletId);
+	}
+
+	public WalletRecord updateBalances(UUID walletId, BigDecimal currentBalance, BigDecimal heldBalance) {
+		return this.jdbcTemplate.queryForObject("""
+				UPDATE wallets
+				SET current_balance = ?, held_balance = ?, updated_at = now()
+				WHERE id = ?
+				RETURNING *
+				""", this::mapWallet, currentBalance, heldBalance, walletId);
+	}
+
 	public LedgerEntryRecord insertLedgerEntry(UUID walletId, LedgerEntryType type, BigDecimal amount,
 			String reference, String idempotencyKey, UUID paymentTransactionId) {
 		return this.jdbcTemplate.queryForObject("""
@@ -101,11 +119,16 @@ public class WalletRepository {
 	}
 
 	private WalletRecord mapWallet(ResultSet rs, int rowNum) throws SQLException {
+		BigDecimal held = rs.getBigDecimal("held_balance");
+		if (held == null) {
+			held = BigDecimal.ZERO;
+		}
 		return new WalletRecord(
 				rs.getObject("id", UUID.class),
 				rs.getObject("user_id", UUID.class),
 				rs.getString("currency"),
 				rs.getBigDecimal("current_balance"),
+				held,
 				WalletStatus.valueOf(rs.getString("status")),
 				instant(rs, "created_at"),
 				instant(rs, "updated_at"));

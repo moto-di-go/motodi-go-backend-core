@@ -173,6 +173,156 @@ public class TripRepository {
 				""", this::mapEvent, tripId);
 	}
 
+	public List<TripHistoryRow> findHistoryForProfile(UUID profileId, UUID userId, String tab, Instant from, Instant to,
+			String status, String paymentStatus, String tripType, int limit, int offset) {
+		StringBuilder sql = new StringBuilder("""
+				SELECT * FROM (
+				  SELECT t.id AS id,
+				         'TRIP' AS kind,
+				         t.type AS trip_type,
+				         t.status AS status,
+				         COALESCE(it.departure_city, '') AS origin,
+				         COALESCE(it.destination_city, '') AS destination,
+				         t.final_price_fcfa AS amount,
+				         (
+				           SELECT pt.status FROM payment_transactions pt
+				           WHERE pt.trip_id = t.id OR pt.booking_id = b.id
+				           ORDER BY pt.initiated_at DESC
+				           LIMIT 1
+				         ) AS payment_status,
+				         (
+				           SELECT r.id FROM receipts r
+				           INNER JOIN payment_transactions pt ON pt.id = r.payment_transaction_id
+				           WHERE pt.trip_id = t.id OR pt.booking_id = b.id
+				           ORDER BY r.issued_at DESC
+				           LIMIT 1
+				         ) AS receipt_id,
+				         EXISTS(
+				           SELECT 1 FROM ratings rt
+				           WHERE rt.trip_id = t.id AND rt.rater_user_id = ?
+				         ) AS rating_submitted,
+				         t.created_at AS created_at,
+				         t.completed_at AS completed_at,
+				         t.planned_departure_at AS planned_at
+				  FROM trips t
+				  LEFT JOIN LATERAL (
+				    SELECT id FROM bookings WHERE trip_id = t.id ORDER BY requested_at DESC LIMIT 1
+				  ) b ON true
+				  LEFT JOIN intercity_trips it ON it.trip_id = t.id
+				  WHERE (
+				    t.passenger_profile_id = ?
+				    OR t.driver_profile_id = ?
+				    OR t.transporter_profile_id = ?
+				  )
+				  UNION ALL
+				  SELECT b.id AS id,
+				         'BOOKING' AS kind,
+				         'INTERCITY' AS trip_type,
+				         b.status AS status,
+				         a.departure_city AS origin,
+				         a.destination_city AS destination,
+				         (a.price_fcfa * b.seats_requested) AS amount,
+				         (
+				           SELECT pt.status FROM payment_transactions pt
+				           WHERE pt.booking_id = b.id
+				           ORDER BY pt.initiated_at DESC
+				           LIMIT 1
+				         ) AS payment_status,
+				         (
+				           SELECT r.id FROM receipts r
+				           INNER JOIN payment_transactions pt ON pt.id = r.payment_transaction_id
+				           WHERE pt.booking_id = b.id
+				           ORDER BY r.issued_at DESC
+				           LIMIT 1
+				         ) AS receipt_id,
+				         false AS rating_submitted,
+				         b.requested_at AS created_at,
+				         NULL::timestamptz AS completed_at,
+				         NULL::timestamptz AS planned_at
+				  FROM bookings b
+				  INNER JOIN intercity_announcements a ON a.id = b.announcement_id
+				  WHERE b.passenger_profile_id = ?
+				    AND b.trip_id IS NULL
+				) h
+				WHERE 1=1
+				""");
+
+		java.util.ArrayList<Object> args = new java.util.ArrayList<>();
+		args.add(userId);
+		args.add(profileId);
+		args.add(profileId);
+		args.add(profileId);
+		args.add(profileId);
+
+		String normalizedTab = tab == null || tab.isBlank() ? "PAST" : tab.trim().toUpperCase();
+		switch (normalizedTab) {
+			case "UPCOMING" -> sql.append("""
+					 AND h.completed_at IS NULL
+					 AND h.status IN ('CONFIRMED', 'APPROACHING', 'ON_BOARD', 'PENDING', 'PENDING_PAYMENT', 'PAID')
+					""");
+			case "CANCELLED" -> sql.append(" AND h.status IN ('CANCELLED', 'EXPIRED')");
+			default -> sql.append(" AND (h.status = 'COMPLETED' OR h.completed_at IS NOT NULL)");
+		}
+
+		if (from != null) {
+			sql.append(" AND h.created_at >= ?");
+			args.add(java.sql.Timestamp.from(from));
+		}
+		if (to != null) {
+			sql.append(" AND h.created_at <= ?");
+			args.add(java.sql.Timestamp.from(to));
+		}
+		if (status != null && !status.isBlank()) {
+			sql.append(" AND h.status = ?");
+			args.add(status.trim().toUpperCase());
+		}
+		if (paymentStatus != null && !paymentStatus.isBlank()) {
+			sql.append(" AND h.payment_status = ?");
+			args.add(paymentStatus.trim().toUpperCase());
+		}
+		if (tripType != null && !tripType.isBlank()) {
+			sql.append(" AND h.trip_type = ?");
+			args.add(tripType.trim().toUpperCase());
+		}
+
+		sql.append(" ORDER BY h.created_at DESC LIMIT ? OFFSET ?");
+		args.add(limit);
+		args.add(offset);
+
+		return this.jdbcTemplate.query(sql.toString(), this::mapHistoryRow, args.toArray());
+	}
+
+	public record TripHistoryRow(
+			UUID id,
+			String kind,
+			String tripType,
+			String status,
+			String origin,
+			String destination,
+			BigDecimal amount,
+			String paymentStatus,
+			UUID receiptId,
+			boolean ratingSubmitted,
+			Instant createdAt,
+			Instant completedAt) {
+	}
+
+	private TripHistoryRow mapHistoryRow(ResultSet rs, int rowNum) throws SQLException {
+		return new TripHistoryRow(
+				rs.getObject("id", UUID.class),
+				rs.getString("kind"),
+				rs.getString("trip_type"),
+				rs.getString("status"),
+				rs.getString("origin"),
+				rs.getString("destination"),
+				rs.getBigDecimal("amount"),
+				rs.getString("payment_status"),
+				rs.getObject("receipt_id", UUID.class),
+				rs.getBoolean("rating_submitted"),
+				toInstant(rs.getObject("created_at")),
+				toInstantNullable(rs.getObject("completed_at")));
+	}
+
 	public static Instant plannedDeparture(LocalDate departureDate, LocalTime departureTime) {
 		if (departureDate == null || departureTime == null) {
 			return null;

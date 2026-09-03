@@ -58,7 +58,8 @@ public record ProfileResponse(
 				profile.agency() == null ? null : new AgencyDetailsResponse(
 						profile.agency().legalName(),
 						profile.agency().tradeRegisterNumber(),
-						profile.agency().billingPlan()),
+						profile.agency().billingPlan(),
+						profile.agency().displayPriority()),
 				profile.admin() == null ? null : new AdminDetailsResponse(
 						profile.admin().adminRole(),
 						profile.admin().permissions()),
@@ -77,7 +78,8 @@ public record ProfileResponse(
 	public record TransporterDetailsResponse(String permitNumber, String companyName, UUID vehicleId) {
 	}
 
-	public record AgencyDetailsResponse(String legalName, String tradeRegisterNumber, String billingPlan) {
+	public record AgencyDetailsResponse(String legalName, String tradeRegisterNumber, String billingPlan,
+			Integer displayPriority) {
 	}
 
 	public record AdminDetailsResponse(String adminRole, List<String> permissions) {

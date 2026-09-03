@@ -54,6 +54,28 @@ public class PaymentTransactionRepository {
 				platformFee, transporterAmount, metadataJson == null ? "{}" : metadataJson);
 	}
 
+	public PaymentTransactionRecord insertNfcPayment(UUID passengerWalletId, UUID receiverWalletId, UUID bookingId,
+			UUID tripId, BigDecimal amount, String idempotencyKey, String metadataJson) {
+		return this.jdbcTemplate.queryForObject("""
+				INSERT INTO payment_transactions (
+					type, status, amount, currency, idempotency_key, provider,
+					booking_id, trip_id, passenger_wallet_id, receiver_wallet_id,
+					transporter_amount, metadata)
+				VALUES ('NFC_PAYMENT', 'INITIATED', ?, 'XAF', ?, 'NFC', ?, ?, ?, ?, ?, ?::jsonb)
+				RETURNING *
+				""", this::mapTransaction, amount, idempotencyKey, bookingId, tripId, passengerWalletId,
+				receiverWalletId, amount, metadataJson == null ? "{}" : metadataJson);
+	}
+
+	public PaymentTransactionRecord markNfcConfirmed(UUID id) {
+		return this.jdbcTemplate.queryForObject("""
+				UPDATE payment_transactions
+				SET status = 'CONFIRMED', confirmed_at = now(), failure_reason = NULL
+				WHERE id = ? AND status = 'INITIATED' AND type = 'NFC_PAYMENT'
+				RETURNING *
+				""", this::mapTransaction, id);
+	}
+
 	public Optional<PaymentTransactionRecord> findById(UUID id) {
 		return this.jdbcTemplate.query("""
 				SELECT * FROM payment_transactions WHERE id = ?

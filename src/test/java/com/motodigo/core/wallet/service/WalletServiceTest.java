@@ -140,8 +140,8 @@ class WalletServiceTest {
 	@Test
 	void getWalletEnsuresProvisioningThenReturnsWallet() {
 		UUID userId = UUID.randomUUID();
-		WalletRecord wallet = new WalletRecord(this.walletId, userId, "XAF", BigDecimal.ZERO, WalletStatus.ACTIVE,
-				Instant.now(), Instant.now());
+		WalletRecord wallet = new WalletRecord(this.walletId, userId, "XAF", BigDecimal.ZERO, BigDecimal.ZERO,
+				WalletStatus.ACTIVE, Instant.now(), Instant.now());
 		when(this.walletRepository.findByUserId(userId)).thenReturn(Optional.of(wallet));
 
 		var response = this.walletService.getWallet(userId);
@@ -166,8 +166,8 @@ class WalletServiceTest {
 
 	private void lockedWallet(BigDecimal balance, WalletStatus status) {
 		when(this.walletRepository.lockByIdForUpdate(this.walletId))
-				.thenReturn(Optional.of(new WalletRecord(this.walletId, UUID.randomUUID(), "XAF", balance, status,
-						Instant.now(), Instant.now())));
+				.thenReturn(Optional.of(new WalletRecord(this.walletId, UUID.randomUUID(), "XAF", balance,
+						BigDecimal.ZERO, status, Instant.now(), Instant.now())));
 	}
 
 	private LedgerEntryRecord ledgerEntry(LedgerEntryType type, BigDecimal amount) {

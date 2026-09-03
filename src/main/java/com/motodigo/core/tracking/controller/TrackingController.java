@@ -1,5 +1,6 @@
 package com.motodigo.core.tracking.controller;
 
+import java.time.Instant;
 import java.util.UUID;
 
 import com.motodigo.core.tracking.dto.UpdateTripStatusRequest;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -31,6 +33,20 @@ class TrackingController {
 	@GetMapping("/active")
 	ResponseEntity<?> getActiveTrips(@AuthenticationPrincipal Jwt jwt) {
 		return ResponseEntity.ok(this.trackingService.getActiveTrips(userId(jwt), activeProfileId(jwt)));
+	}
+
+	@GetMapping("/history")
+	ResponseEntity<?> getHistory(@AuthenticationPrincipal Jwt jwt,
+			@RequestParam(defaultValue = "PAST") String tab,
+			@RequestParam(required = false) Instant from,
+			@RequestParam(required = false) Instant to,
+			@RequestParam(required = false) String status,
+			@RequestParam(required = false) String paymentStatus,
+			@RequestParam(required = false) String tripType,
+			@RequestParam(defaultValue = "0") int page,
+			@RequestParam(defaultValue = "20") int size) {
+		return ResponseEntity.ok(this.trackingService.getHistory(userId(jwt), activeProfileId(jwt), tab, from, to,
+				status, paymentStatus, tripType, page, size));
 	}
 
 	@GetMapping("/{id}")

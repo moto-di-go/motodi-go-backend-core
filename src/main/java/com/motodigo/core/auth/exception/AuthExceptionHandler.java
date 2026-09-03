@@ -3,15 +3,21 @@ package com.motodigo.core.auth.exception;
 import java.time.Instant;
 import java.util.stream.Collectors;
 
+import com.motodigo.core.agency.exception.AgencyException;
+import com.motodigo.core.analytics.exception.AnalyticsException;
 import com.motodigo.core.auth.dto.ErrorResponse;
 import com.motodigo.core.booking.exception.BookingException;
 import com.motodigo.core.geo.exception.GeoException;
 import com.motodigo.core.intercity.exception.IntercityException;
 import com.motodigo.core.kyc.exception.KycException;
+import com.motodigo.core.nfc.exception.NfcException;
 import com.motodigo.core.notification.exception.NotificationException;
 import com.motodigo.core.ops.exception.OpsException;
 import com.motodigo.core.payment.exception.PaymentException;
 import com.motodigo.core.pricing.exception.PricingException;
+import com.motodigo.core.rating.exception.RatingException;
+import com.motodigo.core.offline.exception.OfflineException;
+import com.motodigo.core.support.exception.SupportException;
 import com.motodigo.core.tracking.exception.TrackingException;
 import com.motodigo.core.wallet.exception.WalletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -59,6 +65,11 @@ public class AuthExceptionHandler {
 		return error(exception.errorCode().status(), exception.errorCode().name(), exception.getMessage(), request);
 	}
 
+	@ExceptionHandler(NfcException.class)
+	ResponseEntity<ErrorResponse> handleNfcException(NfcException exception, HttpServletRequest request) {
+		return error(exception.errorCode().status(), exception.errorCode().name(), exception.getMessage(), request);
+	}
+
 	@ExceptionHandler(IntercityException.class)
 	ResponseEntity<ErrorResponse> handleIntercityException(IntercityException exception, HttpServletRequest request) {
 		return error(exception.errorCode().status(), exception.errorCode().name(), exception.getMessage(), request);
@@ -90,8 +101,33 @@ public class AuthExceptionHandler {
 		return error(exception.errorCode().status(), exception.errorCode().name(), exception.getMessage(), request);
 	}
 
+	@ExceptionHandler(AnalyticsException.class)
+	ResponseEntity<ErrorResponse> handleAnalyticsException(AnalyticsException exception, HttpServletRequest request) {
+		return error(exception.errorCode().status(), exception.errorCode().name(), exception.getMessage(), request);
+	}
+
+	@ExceptionHandler(AgencyException.class)
+	ResponseEntity<ErrorResponse> handleAgencyException(AgencyException exception, HttpServletRequest request) {
+		return error(exception.errorCode().status(), exception.errorCode().name(), exception.getMessage(), request);
+	}
+
 	@ExceptionHandler(TrackingException.class)
 	ResponseEntity<ErrorResponse> handleTrackingException(TrackingException exception, HttpServletRequest request) {
+		return error(exception.errorCode().status(), exception.errorCode().name(), exception.getMessage(), request);
+	}
+
+	@ExceptionHandler(RatingException.class)
+	ResponseEntity<ErrorResponse> handleRatingException(RatingException exception, HttpServletRequest request) {
+		return error(exception.errorCode().status(), exception.errorCode().name(), exception.getMessage(), request);
+	}
+
+	@ExceptionHandler(SupportException.class)
+	ResponseEntity<ErrorResponse> handleSupportException(SupportException exception, HttpServletRequest request) {
+		return error(exception.errorCode().status(), exception.errorCode().name(), exception.getMessage(), request);
+	}
+
+	@ExceptionHandler(OfflineException.class)
+	ResponseEntity<ErrorResponse> handleOfflineException(OfflineException exception, HttpServletRequest request) {
 		return error(exception.errorCode().status(), exception.errorCode().name(), exception.getMessage(), request);
 	}
 
